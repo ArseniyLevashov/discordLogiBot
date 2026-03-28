@@ -13,21 +13,16 @@ import java.util.List;
 @Data
 @NoArgsConstructor
 public class DeliveryTicket {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private String resourceName;      // "сальвага", "компачи", "сера"
-    private String resourceEmoji;     // "⚙️", "🌲", "🍎"
-    private long targetAmount;        // цель: 10000 единиц
-    private long deliveredAmount;     // уже привезли
-
-    private String location;          // куда везти
-    private String createdBy;         // Discord ID создателя
-    private String createdByName;     // имя создателя
-
-    private String discordMessageId;  // ID сообщения в Discord (для обновления embed)
-    private String discordChannelId;  // ID канала
+    private String location;
+    private String createdBy;
+    private String createdByName;
+    private String discordMessageId;
+    private String discordChannelId;
 
     @Enumerated(EnumType.STRING)
     private TicketStatus status = TicketStatus.OPEN;
@@ -36,17 +31,16 @@ public class DeliveryTicket {
     private LocalDateTime closedAt;
 
     @OneToMany(mappedBy = "ticket", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    private List<TicketResource> resources = new ArrayList<>();
+
+    @OneToMany(mappedBy = "ticket", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<DeliveryContribution> contributions = new ArrayList<>();
 
     public enum TicketStatus { OPEN, COMPLETED, CANCELLED }
 
-    // Прогресс в процентах (0-100)
-    public int getProgressPercent() {
-        if (targetAmount == 0) return 100;
-        return (int) Math.min(100, (deliveredAmount * 100L) / targetAmount);
-    }
-
-    public boolean isCompleted() {
-        return deliveredAmount >= targetAmount;
+    // Тикет завершён когда ВСЕ ресурсы доставлены
+    public boolean isAllCompleted() {
+        return !resources.isEmpty() &&
+                resources.stream().allMatch(TicketResource::isCompleted);
     }
 }

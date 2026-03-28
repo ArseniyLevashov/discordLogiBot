@@ -4,6 +4,7 @@ import discord4j.core.GatewayDiscordClient;
 import discord4j.core.event.domain.interaction.ButtonInteractionEvent;
 import discord4j.core.event.domain.interaction.ChatInputInteractionEvent;
 import discord4j.core.event.domain.interaction.ModalSubmitInteractionEvent;
+import discord4j.core.event.domain.interaction.SelectMenuInteractionEvent;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -39,20 +40,37 @@ public class DiscordEventHandler {
                 Long ticketId = Long.parseLong(id.split(":")[1]);
                 return userHandler.handleDeliverButton(event, ticketId);
             }
-            if (id.startsWith("status:")) {
+            return Mono.empty();
+        }).subscribe();
+
+        // Select Menu — выбор ресурса
+        client.on(SelectMenuInteractionEvent.class, event -> {
+            String id = event.getCustomId();
+            if (id.startsWith("resource_select:")) {
                 Long ticketId = Long.parseLong(id.split(":")[1]);
-                return userHandler.handleStatusButton(event, ticketId);
+                return userHandler.handleResourceSelect(event, ticketId);
             }
             return Mono.empty();
         }).subscribe();
 
-        // Modal (форма с количеством)
+        // Modals
         client.on(ModalSubmitInteractionEvent.class, event -> {
             String id = event.getCustomId();
-            if (id.startsWith("deliver_modal:")) {
-                Long ticketId = Long.parseLong(id.split(":")[1]);
-                return userHandler.handleDeliverModal(event, ticketId);
+
+            // Modal создания тикета
+            if (id.startsWith("create_ticket_modal:")) {
+                String location = id.substring("create_ticket_modal:".length());
+                return adminHandler.handleCreateTicketModal(event, location);
             }
+
+            // Modal доставки ресурса
+            if (id.startsWith("deliver_modal:")) {
+                String[] parts  = id.split(":");
+                Long ticketId   = Long.parseLong(parts[1]);
+                Long resourceId = Long.parseLong(parts[2]);
+                return userHandler.handleDeliverModal(event, ticketId, resourceId);
+            }
+
             return Mono.empty();
         }).subscribe();
     }

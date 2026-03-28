@@ -1,13 +1,16 @@
 package com.example.bot2.service;
 
 import com.example.bot2.entity.DeliveryTicket;
+import com.example.bot2.entity.TicketResource;
 import discord4j.common.util.Snowflake;
 import discord4j.core.GatewayDiscordClient;
 import discord4j.core.event.domain.interaction.ChatInputInteractionEvent;
+import discord4j.core.event.domain.interaction.ModalSubmitInteractionEvent;
 import discord4j.core.object.command.ApplicationCommandInteractionOption;
 import discord4j.core.object.command.ApplicationCommandInteractionOptionValue;
 import discord4j.core.object.component.ActionRow;
 import discord4j.core.object.component.LayoutComponent;
+import discord4j.core.object.component.TextInput;
 import discord4j.core.spec.EmbedCreateSpec;
 import discord4j.core.spec.MessageCreateSpec;
 import discord4j.rest.util.Color;
@@ -18,7 +21,10 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
@@ -43,49 +49,137 @@ public class AdminCommandHandler {
         if (!hasRole) {
             return event.reply()
                     .withEphemeral(true)
-                    .withContent("❌ Дух завода не подчинится самозванцу!");
+                    .withContent("❌ У тебя нет прав для создания тикетов!");
         }
 
-        return doCreateTicket(event);
+        String location = getStringOption(event, "location");
+
+        // Открываем Modal с полями для ресурсов
+        return event.presentModal()
+                .withTitle("📦 Ресурсы для доставки")
+                .withCustomId("create_ticket_modal:" + location)
+                .withComponents(
+                        ActionRow.of(
+                                TextInput.small("resource_1", "Ресурс 1 (название:количество)", 1, 50)
+                                        .required(true)
+                                        .placeholder("Сальвага:100000")
+                        ),
+                        ActionRow.of(
+                                TextInput.small("resource_2", "Ресурс 2", 1, 50)
+                                        .required(false)
+                                        .placeholder("Компоненты:50000")
+                        ),
+                        ActionRow.of(
+                                TextInput.small("resource_3", "Ресурс 3", 1, 50)
+                                        .required(false)
+                                        .placeholder("Уголь:30000")
+                        ),
+                        ActionRow.of(
+                                TextInput.small("resource_4", "Ресурс 4", 1, 50)
+                                        .required(false)
+                                        .placeholder("Сера:30000")
+                        ),
+                        ActionRow.of(
+                                TextInput.small("resource_5", "Ресурс 5", 1, 50)
+                                        .required(false)
+                                        .placeholder("Кокс:20000")
+                        )
+                );
     }
 
-    private Mono<Void> doCreateTicket(ChatInputInteractionEvent event) {
-        String resource = getStringOption(event, "resource");
-        String emoji    = getStringOption(event, "emoji");
-        long amount     = getLongOption(event, "amount");
-        String location = getStringOption(event, "location");
+    public Mono<Void> handleCreateTicketModal(ModalSubmitInteractionEvent event, String location) {
+        boolean hasRole = event.getInteraction().getMember()
+                .map(member -> member.getRoleIds().stream()
+                        .anyMatch(id -> id.asString().equals(managerRoleId)))
+                .orElse(false);
+
+        if (!hasRole) {
+            return event.reply().withEphemeral(true).withContent("❌ Духи завода не подчинятся самозванцу!");
+        }
+
+        // Собираем заполненные поля ресурсов
+        List<String> resourceSpecs = new ArrayList<>();
+        for (int i = 1; i <= 5; i++) {
+            final String fieldId = "resource_" + i;
+            event.getComponents(TextInput.class).stream()
+                    .filter(c -> c.getCustomId().equals(fieldId))
+                    .findFirst()
+                    .flatMap(TextInput::getValue)
+                    .map(String::trim)
+                    .filter(v -> !v.isEmpty())
+                    .ifPresent(resourceSpecs::add);
+        }
+
+        if (resourceSpecs.isEmpty()) {
+            return event.reply()
+                    .withEphemeral(true)
+                    .withContent("❌ Ну ты хоть че-нибудь напиши, дурень");
+        }
+
+        // Валидация формата
+        List<String> invalid = resourceSpecs.stream()
+                .filter(spec -> spec.split(":").length < 2)
+                .collect(Collectors.toList());
+
+        if (!invalid.isEmpty()) {
+            return event.reply()
+                    .withEphemeral(true)
+                    .withContent("❌ Неверный формат: `" + String.join(", ", invalid) +
+                            "`\nФормат: `название:количество` (напр. `Железо:10000`)");
+        }
+
+        // Валидация чисел
+        for (String spec : resourceSpecs) {
+            try {
+                long amount = Long.parseLong(spec.split(":", 2)[1].trim());
+                if (amount <= 0) throw new NumberFormatException();
+            } catch (NumberFormatException e) {
+                return event.reply()
+                        .withEphemeral(true)
+                        .withContent("❌ Количество должно быть больше 0 (удивительно, не правда ли?): `" + spec + "`");
+            }
+        }
+
         String userId   = event.getInteraction().getUser().getId().asString();
         String username = event.getInteraction().getUser().getUsername();
 
-        DeliveryTicket ticket = deliveryService.createTicket(
-                resource, emoji, amount, location, userId, username);
+        return Mono.fromCallable(() ->
+                deliveryService.createTicket(resourceSpecs, location, userId, username)
+        ).flatMap(ticket -> {
 
-        EmbedCreateSpec embed = embedBuilder.buildTicketEmbed(ticket, List.of());
-        List<LayoutComponent> buttons = embedBuilder.buildTicketButtons(ticket);
+            // Загружаем тикет свежо из БД чтобы гарантированно получить ресурсы
+            DeliveryTicket freshTicket = deliveryService.getTicketById(ticket.getId())
+                    .orElse(ticket);
 
-        // Получаем канал из самого interaction и постим обычное сообщение
-        return event.getInteraction().getChannel()
-                .flatMap(channel -> channel.createMessage(MessageCreateSpec.builder()
-                        .addEmbed(embed)
-                        .addComponent(buttons.isEmpty()
-                                ? ActionRow.of()
-                                : (LayoutComponent) buttons.get(0))
-                        .build()
-                ))
-                .doOnNext(message -> {
-                    log.info("Ticket #{} posted as message {}", ticket.getId(), message.getId().asString());
-                    deliveryService.attachMessage(
-                            ticket.getId(),
-                            message.getId().asString(),
-                            message.getChannelId().asString()
+            log.info("Posting ticket #{} with {} resources",
+                    freshTicket.getId(), freshTicket.getResources().size());
+
+            EmbedCreateSpec embed = embedBuilder.buildTicketEmbed(freshTicket);
+            List<LayoutComponent> buttons = embedBuilder.buildTicketButtons(freshTicket);
+
+            return event.getInteraction().getChannel()
+                    .flatMap(channel -> channel.createMessage(MessageCreateSpec.builder()
+                            .addEmbed(embed)
+                            .addComponent(buttons.isEmpty()
+                                    ? ActionRow.of()
+                                    : (LayoutComponent) buttons.get(0))
+                            .build()
+                    ))
+                    .doOnNext(message -> {
+                        deliveryService.attachMessage(
+                                freshTicket.getId(),
+                                message.getId().asString(),
+                                message.getChannelId().asString()
+                        );
+                        log.info("Ticket #{} posted with {} resources",
+                                freshTicket.getId(), freshTicket.getResources().size());
+                    })
+                    .then(event.reply()
+                            .withEphemeral(true)
+                            .withContent(String.format("✅ Тикет #%d создан с %d ресурсами!",
+                                    freshTicket.getId(), freshTicket.getResources().size()))
                     );
-                })
-                .then(
-                        // Отвечаем на slash-команду эфемерно чтобы она не висела
-                        event.reply()
-                                .withEphemeral(true)
-                                .withContent("✅ Тикет #" + ticket.getId() + " создан!")
-                );
+        });
     }
 
     /**
@@ -100,7 +194,7 @@ public class AdminCommandHandler {
         if (!hasRole) {
             return event.reply()
                     .withEphemeral(true)
-                    .withContent("❌ Дух завода не подчинится самозванцу!");
+                    .withContent("❌ Духи завода не подчинятся самозванцу!");
         }
 
         long ticketId = getLongOption(event, "id");
@@ -127,14 +221,24 @@ public class AdminCommandHandler {
         if (open.isEmpty()) {
             return event.reply()
                     .withEphemeral(true)
-                    .withContent("📭 Активных тикетов нет (но ты все равно привези что-нибудь)");
+                    .withContent("📭 Активных тикетов нет");
         }
 
         StringBuilder sb = new StringBuilder();
         for (DeliveryTicket t : open) {
-            sb.append(String.format("**#%d** %s %s → %s | %d%% выполнено\n",
-                    t.getId(), t.getResourceEmoji(), t.getResourceName(),
-                    t.getLocation(), t.getProgressPercent()));
+            sb.append(String.format("**#%d** 📍 %s\n", t.getId(), t.getLocation()));
+
+            for (TicketResource r : t.getResources()) {
+                int percent = r.getProgressPercent();
+                String status = percent >= 100 ? "✅" : percent >= 50 ? "🟧" : "🟥";
+                sb.append(String.format("  %s %s %s — %,d/%,d (%d%%)\n",
+                        status,
+                        r.getResourceName(),
+                        r.getDeliveredAmount(),
+                        r.getTargetAmount(),
+                        percent));
+            }
+            sb.append("\n");
         }
 
         return event.reply()
@@ -150,40 +254,24 @@ public class AdminCommandHandler {
      * Обновить embed в Discord после изменения тикета
      */
     public Mono<Void> refreshTicketMessage(DeliveryTicket ticket, GatewayDiscordClient client) {
-        if (ticket.getDiscordMessageId() == null || ticket.getDiscordChannelId() == null) {
-            log.warn("Ticket #{} has no attached message, skipping refresh", ticket.getId());
-            return Mono.empty();
-        }
+        if (ticket.getDiscordMessageId() == null) return Mono.empty();
 
-        // Перечитываем тикет из БД чтобы получить актуальные данные
-        DeliveryTicket fresh = deliveryService.getTicketById(ticket.getId())
-                .orElse(ticket);
-
-        log.info("=== REFRESH TICKET #{} ===", fresh.getId());
-        log.info("messageId: {}", fresh.getDiscordMessageId());
-        log.info("channelId: {}", fresh.getDiscordChannelId());
-        log.info("delivered: {}/{}", fresh.getDeliveredAmount(), fresh.getTargetAmount());
-
-        if (fresh.getDiscordMessageId() == null || fresh.getDiscordChannelId() == null) {
-            log.error("MESSAGE ID OR CHANNEL ID IS NULL — attachMessage не сработал!");
-            return Mono.empty();
-        }
-
-        List<Object[]> top = deliveryService.getTopContributors(fresh.getId());
-        EmbedCreateSpec embed = embedBuilder.buildTicketEmbed(fresh, top);
+        DeliveryTicket fresh = deliveryService.getTicketById(ticket.getId()).orElse(ticket);
+        EmbedCreateSpec embed = embedBuilder.buildTicketEmbed(fresh);
         List<LayoutComponent> buttons = embedBuilder.buildTicketButtons(fresh);
 
         return client.getMessageById(
                         Snowflake.of(fresh.getDiscordChannelId()),
                         Snowflake.of(fresh.getDiscordMessageId())
-                )
-                .flatMap(message -> message.edit()
+                ).flatMap(message -> message.edit()
                         .withEmbeds(embed)
-                        .withComponents(buttons)
+                        .withComponents(buttons.isEmpty()
+                                ? new ArrayList<>()
+                                : List.of(buttons.get(0)))
                 )
-                .doOnSuccess(m -> log.info("Ticket #{} embed updated", fresh.getId()))
-                .doOnError(e -> log.error("Failed to update ticket #{} embed: {}", fresh.getId(), e.getMessage()))
-                //.onErrorResume(e -> Mono.empty()) // не крашим бота если обновление не удалось
+                .doOnSuccess(m -> log.info("Ticket #{} updated", fresh.getId()))
+                .doOnError(e -> log.error("Refresh failed: {}", e.getMessage()))
+                .onErrorResume(e -> Mono.empty())
                 .then();
     }
 

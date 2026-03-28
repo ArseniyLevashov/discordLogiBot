@@ -5,6 +5,7 @@ import discord4j.core.object.command.ApplicationCommandOption;
 import discord4j.discordjson.json.ApplicationCommandOptionData;
 import discord4j.discordjson.json.ApplicationCommandRequest;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
@@ -17,38 +18,40 @@ public class SlashCommandRegistrar implements ApplicationRunner {
 
     private final GatewayDiscordClient client;
 
+    @Value("${discord.guild-id}")
+    private long guildId;
+
     @Override
     public void run(ApplicationArguments args) {
         long appId = client.getRestClient().getApplicationId().block();
 
         List<ApplicationCommandRequest> commands = List.of(
-
-                // Создать тикет (менеджер)
                 ApplicationCommandRequest.builder()
                         .name("create-ticket")
                         .description("Создать тикет на доставку ресурсов")
-                        .addOption(option("resource", "Название ресурса (напр. компачи)", true))
-                        .addOption(option("emoji",    "Эмодзи ресурса (напр. ⚙️)", true))
-                        .addOption(optionLong("amount", "Цель в единицах (напр. 100000)", true))
-                        .addOption(option("location", "Куда доставить (напр. завод/склад STRB-1)", true))
+                        .addOption(option("location", "Куда доставить", true))
                         .build(),
 
-                // Отменить тикет (менеджер)
                 ApplicationCommandRequest.builder()
                         .name("cancel-ticket")
                         .description("Отменить тикет доставки")
                         .addOption(optionLong("id", "ID тикета", true))
                         .build(),
 
-                // Список открытых тикетов
                 ApplicationCommandRequest.builder()
                         .name("tickets")
                         .description("Показать список активных тикетов")
                         .build()
         );
 
+        // Глобальные — обновляются до 1 часа
+        // client.getRestClient().getApplicationService()
+        //         .bulkOverwriteGlobalApplicationCommand(appId, commands)
+        //         .blockLast();
+
+        // Для конкретного сервера — обновляются мгновенно ✅
         client.getRestClient().getApplicationService()
-                .bulkOverwriteGlobalApplicationCommand(appId, commands)
+                .bulkOverwriteGuildApplicationCommand(appId, guildId, commands)
                 .blockLast();
     }
 
