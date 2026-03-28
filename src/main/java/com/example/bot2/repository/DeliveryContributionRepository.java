@@ -11,13 +11,12 @@ public interface DeliveryContributionRepository extends JpaRepository<DeliveryCo
     List<DeliveryContribution> findByTicketIdOrderByContributedAtDesc(Long ticketId);
 
     // Топ контрибьюторов по тикету
-    @Query("SELECT c.userId, c.username, SUM(c.amount) as total FROM DeliveryContribution c " +
-            "WHERE c.ticket.id = :ticketId GROUP BY c.userId, c.username ORDER BY total DESC")
+    @Query("SELECT c.username, SUM(c.amount) as total " +
+            "FROM DeliveryContribution c " +
+            "WHERE c.ticket.id = :ticketId " +
+            "GROUP BY c.userId, c.username " +
+            "ORDER BY total DESC")
     List<Object[]> findTopContributorsByTicketId(@Param("ticketId") Long ticketId);
-
-    // Общий вклад пользователя по всем тикетам
-    @Query("SELECT SUM(c.amount) FROM DeliveryContribution c WHERE c.userId = :userId")
-    Long sumAmountByUserId(@Param("userId") String userId);
 
 }
 

@@ -8,12 +8,10 @@ import discord4j.core.object.component.ActionRow;
 import discord4j.core.object.component.SelectMenu;
 import discord4j.core.object.component.TextInput;
 import discord4j.core.spec.EmbedCreateSpec;
-import discord4j.rest.util.Color;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -97,7 +95,7 @@ public class UserCommandHandler {
         try {
             amount = Long.parseLong(rawAmount.trim().replace(",", "").replace(" ", ""));
         } catch (NumberFormatException e) {
-            return event.reply().withEphemeral(true).withContent("❌ Введи корректное число!");
+            return event.reply().withEphemeral(true).withContent("❌ Ты мне тут чепуху всякую не пиши!");
         }
 
         return Mono.fromCallable(() ->

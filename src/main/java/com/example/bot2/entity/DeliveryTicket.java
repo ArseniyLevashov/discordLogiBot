@@ -30,6 +30,7 @@ public class DeliveryTicket {
     private LocalDateTime createdAt = LocalDateTime.now();
     private LocalDateTime closedAt;
 
+    private String description; // ← описание
     @OneToMany(mappedBy = "ticket", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
     private List<TicketResource> resources = new ArrayList<>();
 

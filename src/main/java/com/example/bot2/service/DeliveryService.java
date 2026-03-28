@@ -31,9 +31,11 @@ public class DeliveryService {
      * resources — список пар: "⚙️Железо:10000", "🌲Дерево:5000"
      */
     public DeliveryTicket createTicket(List<String> resourceSpecs, String location,
+                                       String description,
                                        String creatorId, String creatorName) {
         DeliveryTicket ticket = new DeliveryTicket();
         ticket.setLocation(location);
+        ticket.setDescription(description);
         ticket.setCreatedBy(creatorId);
         ticket.setCreatedByName(creatorName);
         DeliveryTicket saved = ticketRepo.save(ticket);
@@ -144,5 +146,9 @@ public class DeliveryService {
         boolean success;
         DeliveryTicket ticket;
         String message;
+    }
+
+    public List<Object[]> getTopContributors(Long ticketId) {
+        return contributionRepo.findTopContributorsByTicketId(ticketId);
     }
 }

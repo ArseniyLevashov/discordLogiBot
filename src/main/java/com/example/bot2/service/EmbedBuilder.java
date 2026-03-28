@@ -17,7 +17,7 @@ public class EmbedBuilder {
 
     private static final int BAR_LENGTH = 18;
 
-    public EmbedCreateSpec buildTicketEmbed(DeliveryTicket ticket) {
+    public EmbedCreateSpec buildTicketEmbed(DeliveryTicket ticket, List<Object[]> topContributors) {
         Color color = switch (ticket.getStatus()) {
             case OPEN      -> Color.of(0xF39C12);
             case COMPLETED -> Color.of(0x2ECC71);
@@ -30,27 +30,52 @@ public class EmbedBuilder {
                         .title(buildStatusLine(ticket))
                         .description("📍 Место доставки: **" + ticket.getLocation() + "**");
 
+        builder.addField(
+                "Описание: ",
+                ticket.getDescription(),
+                false
+        );
+
         // Прогресс-бар для каждого ресурса
         for (TicketResource resource : ticket.getResources()) {
             int percent = resource.getProgressPercent();
-            String bar = buildProgressBar(percent);
-
             builder.addField(
-                    resource.getResourceName(),  // просто название без эмодзи
+                    resource.getResourceName(),
                     String.format("%s\n**%,d / %,d** (%d%%)",
-                            buildProgressBar(resource.getProgressPercent()),
+                            buildProgressBar(percent),
                             resource.getDeliveredAmount(),
                             resource.getTargetAmount(),
-                            resource.getProgressPercent()),
+                            percent),
                     false
             );
         }
+
+        // Топ 5 доставщиков
+        builder.addField("🏆 Топ доставщиков", buildTopContributors(topContributors), false);
 
         builder.footer(String.format("Тикет #%d | Создал: %s",
                 ticket.getId(), ticket.getCreatedByName()), "");
 
         return builder.build();
     }
+
+    private String buildTopContributors(List<Object[]> top) {
+        if (top == null || top.isEmpty()) {
+            return "*Никто ещё не доставлял*";
+        }
+
+        String[] medals = {"🥇", "🥈", "🥉", "4️⃣", "5️⃣"};
+        StringBuilder sb = new StringBuilder();
+
+        for (int i = 0; i < Math.min(5, top.size()); i++) {
+            String name  = (String) top.get(i)[0];
+            long total   = ((Number) top.get(i)[1]).longValue();
+            sb.append(String.format("%s **%s** — %,d ед.\n", medals[i], name, total));
+        }
+
+        return sb.toString();
+    }
+
 
     private String buildProgressBar(int percent) {
         int filled = (int) Math.round(BAR_LENGTH * percent / 100.0);
