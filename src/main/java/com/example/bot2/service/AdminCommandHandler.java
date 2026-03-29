@@ -112,7 +112,8 @@ public class AdminCommandHandler {
                 .orElse(false);
 
         if (!hasRole && !hasLogiRole) {
-            return event.reply().withEphemeral(true).withContent("❌ Духи завода не подчинятся самозванцу!");
+            return event.reply().withEphemeral(true)
+                    .withContent("❌ Духи завода не подчинятся самозванцу!");
         }
 
         // Собираем заполненные поля ресурсов
@@ -129,8 +130,7 @@ public class AdminCommandHandler {
         }
 
         if (resourceSpecs.isEmpty()) {
-            return event.reply()
-                    .withEphemeral(true)
+            return event.reply().withEphemeral(true)
                     .withContent("❌ Ну ты хоть че-нибудь напиши, дурень");
         }
 
@@ -140,8 +140,7 @@ public class AdminCommandHandler {
                 .collect(Collectors.toList());
 
         if (!invalid.isEmpty()) {
-            return event.reply()
-                    .withEphemeral(true)
+            return event.reply().withEphemeral(true)
                     .withContent("❌ Неверный формат: `" + String.join(", ", invalid) +
                             "`\nФормат: `название:количество` (напр. `Сальвага:10000`)");
         }
@@ -152,8 +151,7 @@ public class AdminCommandHandler {
                 long amount = Long.parseLong(spec.split(":", 2)[1].trim());
                 if (amount <= 0) throw new NumberFormatException();
             } catch (NumberFormatException e) {
-                return event.reply()
-                        .withEphemeral(true)
+                return event.reply().withEphemeral(true)
                         .withContent("❌ Количество должно быть больше 0 (удивительно, не правда ли?): `" + spec + "`");
             }
         }
@@ -169,40 +167,49 @@ public class AdminCommandHandler {
         String userId   = event.getInteraction().getUser().getId().asString();
         String username = event.getInteraction().getUser().getUsername();
 
-        return Mono.fromCallable(() ->
-                deliveryService.createTicket(
-                        resourceSpecs, location, description, userId, username)
-        ).flatMap(ticket -> {
-            DeliveryTicket fresh = deliveryService.getTicketById(ticket.getId()).orElse(ticket);
-            List<Object[]> top  = deliveryService.getTopContributors(fresh.getId());
-            EmbedCreateSpec embed = embedBuilder.buildTicketEmbed(fresh, top);
-            List<LayoutComponent> buttons = embedBuilder.buildTicketButtons(fresh);
+        final List<String> finalSpecs = resourceSpecs;
+        final String finalDesc = description;
 
-            return event.getInteraction().getChannel()
-                    .flatMap(channel -> channel.createMessage(
-                            MessageCreateSpec.builder()
-                                    .content("<@&" + pingRoleId + ">") // ← всегда из конфига
-                                    .addEmbed(embed)
-                                    .addComponent(buttons.isEmpty()
-                                            ? ActionRow.of()
-                                            : (LayoutComponent) buttons.get(0))
-                                    .build()
-                    ))
-                    .doOnNext(message -> deliveryService.attachMessage(
-                            fresh.getId(),
-                            message.getId().asString(),
-                            message.getChannelId().asString()
-                    ))
-                    .then(event.reply()
-                            .withEphemeral(true)
-                            .withContent(String.format("✅ Тикет #%d создан с %d ресурсами!",
-                                    fresh.getId(), fresh.getResources().size()))
-                    );
-        }).onErrorResume(e -> {
-            log.error("Error creating ticket: ", e);
-            return event.reply().withEphemeral(true)
-                    .withContent("❌ Ошибка: " + e.getMessage());
-        });
+        // ← deferReply резервирует время до 15 минут вместо 3 секунд
+        return event.deferReply().withEphemeral(true)
+                .then(Mono.fromCallable(() ->
+                        deliveryService.createTicket(finalSpecs, location, finalDesc, userId, username)
+                ))
+                .flatMap(ticket -> {
+                    DeliveryTicket fresh = deliveryService.getTicketById(ticket.getId()).orElse(ticket);
+                    List<Object[]> top  = deliveryService.getTopContributors(fresh.getId());
+                    EmbedCreateSpec embed = embedBuilder.buildTicketEmbed(fresh, top);
+                    List<LayoutComponent> buttons = embedBuilder.buildTicketButtons(fresh);
+
+                    return event.getInteraction().getChannel()
+                            .flatMap(channel -> channel.createMessage(
+                                    MessageCreateSpec.builder()
+                                            .content("<@&" + pingRoleId + ">")
+                                            .addEmbed(embed)
+                                            .addComponent(buttons.isEmpty()
+                                                    ? ActionRow.of()
+                                                    : (LayoutComponent) buttons.get(0))
+                                            .build()
+                            ))
+                            .doOnNext(message -> deliveryService.attachMessage(
+                                    fresh.getId(),
+                                    message.getId().asString(),
+                                    message.getChannelId().asString()
+                            ))
+                            .then(event.editReply()
+                                    .withContentOrNull(String.format(
+                                            "✅ Тикет #%d создан с %d ресурсами!",
+                                            fresh.getId(), fresh.getResources().size()))
+                                    .then() // ← добавь сюда
+                            );
+                })
+                .onErrorResume(e -> {
+                    log.error("Error creating ticket: ", e);
+                    return event.editReply()
+                            .withContentOrNull("❌ Ошибка: " + e.getMessage())
+                            .then();
+                })
+                .then();
     }
 
 
