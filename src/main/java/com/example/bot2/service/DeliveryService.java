@@ -151,4 +151,30 @@ public class DeliveryService {
     public List<Object[]> getTopContributors(Long ticketId) {
         return contributionRepo.findTopContributorsByTicketId(ticketId);
     }
+
+    /**
+     * Удалить все данные о тикетах, ресурсах и вкладах
+     */
+    public CleanupResult cleanupAllData() {
+        long contributionsCount = contributionRepo.count();
+        long resourcesCount = resourceRepo.count();
+        long ticketsCount = ticketRepo.count();
+
+        // Порядок важен — сначала зависимости, потом тикеты
+        contributionRepo.deleteAllInBatch();
+        resourceRepo.deleteAllInBatch();
+        ticketRepo.deleteAllInBatch();
+
+        log.warn("CLEANUP: deleted {} contributions, {} resources, {} tickets",
+                contributionsCount, resourcesCount, ticketsCount);
+
+        return new CleanupResult(ticketsCount, resourcesCount, contributionsCount);
+    }
+
+    @lombok.Value
+    public static class CleanupResult {
+        long deletedTickets;
+        long deletedResources;
+        long deletedContributions;
+    }
 }

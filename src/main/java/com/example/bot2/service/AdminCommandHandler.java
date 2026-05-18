@@ -4,13 +4,16 @@ import com.example.bot2.entity.DeliveryTicket;
 import com.example.bot2.entity.TicketResource;
 import discord4j.common.util.Snowflake;
 import discord4j.core.GatewayDiscordClient;
+import discord4j.core.event.domain.interaction.ButtonInteractionEvent;
 import discord4j.core.event.domain.interaction.ChatInputInteractionEvent;
 import discord4j.core.event.domain.interaction.ModalSubmitInteractionEvent;
 import discord4j.core.object.command.ApplicationCommandInteractionOption;
 import discord4j.core.object.command.ApplicationCommandInteractionOptionValue;
 import discord4j.core.object.component.ActionRow;
+import discord4j.core.object.component.Button;
 import discord4j.core.object.component.LayoutComponent;
 import discord4j.core.object.component.TextInput;
+import discord4j.core.object.reaction.ReactionEmoji;
 import discord4j.core.spec.EmbedCreateSpec;
 import discord4j.core.spec.MessageCreateSpec;
 import discord4j.rest.util.Color;
@@ -36,6 +39,9 @@ public class AdminCommandHandler {
 
     @Value("${discord.manager-role-id}")
     private String facilityManagerRoleId;
+
+    @Value("${discord.manager-role-id}")
+    private String mainFacilityManagerRoleId;
 
     @Value("${discord.logist-role-id}")
     private String warehouseManagerRoleId;
@@ -94,6 +100,106 @@ public class AdminCommandHandler {
                         )
                 );
     }
+
+    /**
+     * /cleanup-data — открывает подтверждение
+     */
+    public Mono<Void> handleCleanupCommand(ChatInputInteractionEvent event) {
+        boolean hasRole = event.getInteraction().getMember()
+                .map(member -> member.getRoleIds().stream()
+                        .anyMatch(id -> id.asString().equals(facilityManagerRoleId)))
+                .orElse(false);
+
+        if (!hasRole) {
+            return event.reply().withEphemeral(true)
+                    .withContent("❌ Только администратор может удалять данные!");
+        }
+
+        Button confirmButton = Button.danger("cleanup_confirm",
+                ReactionEmoji.unicode("⚠️"), "Да, удалить ВСЁ");
+        Button cancelButton = Button.secondary("cleanup_cancel",
+                ReactionEmoji.unicode("❌"), "Отмена");
+
+        return event.reply()
+                .withEphemeral(true)
+                .withEmbeds(EmbedCreateSpec.builder()
+                        .color(Color.RED)
+                        .title("⚠️ ВНИМАНИЕ — удаление всех данных")
+                        .description("""
+                            Эта операция **полностью удалит**:
+                            • Все тикеты
+                            • Все ресурсы
+                            • Всю историю доставок и топ доставщиков
+                            
+                            **Это действие НЕЛЬЗЯ отменить!**
+                            
+                            Сообщения тикетов в Discord останутся,
+                            но кнопки на них перестанут работать.
+                            Занимайся такими приколами только после окончания войны""")
+                        .build())
+                .withComponents(ActionRow.of(confirmButton, cancelButton));
+    }
+
+    /**
+     * Кнопка подтверждения удаления
+     */
+    public Mono<Void> handleCleanupConfirm(ButtonInteractionEvent event) {
+        boolean hasRole = event.getInteraction().getMember()
+                .map(member -> member.getRoleIds().stream()
+                        .anyMatch(id -> id.asString().equals(mainFacilityManagerRoleId)))
+                .orElse(false);
+
+        if (!hasRole) {
+            return event.reply().withEphemeral(true).withContent("❌ Нет прав!");
+        }
+
+        String username = event.getInteraction().getUser().getUsername();
+
+        return event.deferEdit()
+                .then(Mono.fromCallable(() -> deliveryService.cleanupAllData()))
+                .flatMap(result -> {
+                    log.warn("Data cleanup performed by {}", username);
+
+                    return event.editReply()
+                            .withEmbedsOrNull(List.of(EmbedCreateSpec.builder()
+                                    .color(Color.of(0x2ECC71))
+                                    .title("✅ Данные удалены")
+                                    .description(String.format("""
+                                        Удалено:
+                                        • Тикетов: **%d**
+                                        • Ресурсов: **%d**
+                                        • Записей о доставках: **%d**
+                                        
+                                        Удалил: %s""",
+                                            result.getDeletedTickets(),
+                                            result.getDeletedResources(),
+                                            result.getDeletedContributions(),
+                                            username))
+                                    .build()))
+                            .withComponentsOrNull(List.of()) // убираем кнопки
+                            .then();
+                })
+                .onErrorResume(e -> {
+                    log.error("Cleanup failed: ", e);
+                    return event.editReply()
+                            .withContentOrNull("❌ Ошибка при удалении: " + e.getMessage())
+                            .then();
+                });
+    }
+
+    /**
+     * Кнопка отмены
+     */
+    public Mono<Void> handleCleanupCancel(ButtonInteractionEvent event) {
+        return event.edit()
+                .withEmbeds(EmbedCreateSpec.builder()
+                        .color(Color.of(0x95A5A6))
+                        .title("❌ Отменено")
+                        .description("Данные не были удалены.")
+                        .build())
+                .withComponents(List.of()); // убираем кнопки
+    }
+
 
     public Mono<Void> handleCreateTicketModal(ModalSubmitInteractionEvent event, String location) {
         boolean hasRole = event.getInteraction().getMember()

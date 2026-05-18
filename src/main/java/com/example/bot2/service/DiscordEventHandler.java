@@ -29,6 +29,7 @@ public class DiscordEventHandler {
                     case "create-ticket" -> adminHandler.handleCreateTicket(event);
                     case "cancel-ticket" -> adminHandler.handleCancelTicket(event);
                     case "tickets"       -> adminHandler.handleListTickets(event);
+                    case "cleanup-data" ->  adminHandler.handleCleanupCommand(event);
                     default              -> Mono.empty();
                 }
         ).subscribe();
@@ -71,6 +72,18 @@ public class DiscordEventHandler {
                 return userHandler.handleDeliverModal(event, ticketId, resourceId);
             }
 
+            return Mono.empty();
+        }).subscribe();
+
+        client.on(ButtonInteractionEvent.class, event -> {
+            String id = event.getCustomId();
+            if (id.startsWith("deliver:")) {
+                Long ticketId = Long.parseLong(id.split(":")[1]);
+                return userHandler.handleDeliverButton(event, ticketId);
+            }
+            // Новые кнопки
+            if (id.equals("cleanup_confirm")) return adminHandler.handleCleanupConfirm(event);
+            if (id.equals("cleanup_cancel"))  return adminHandler.handleCleanupCancel(event);
             return Mono.empty();
         }).subscribe();
     }

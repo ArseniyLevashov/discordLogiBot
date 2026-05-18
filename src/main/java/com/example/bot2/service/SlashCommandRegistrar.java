@@ -41,6 +41,11 @@ public class SlashCommandRegistrar implements ApplicationRunner {
                 ApplicationCommandRequest.builder()
                         .name("tickets")
                         .description("Показать список активных тикетов")
+                        .build(),
+
+                ApplicationCommandRequest.builder()
+                        .name("cleanup-data")
+                        .description("⚠️ Удалить ВСЕ тикеты, ресурсы и историю доставок")
                         .build()
         );
 
