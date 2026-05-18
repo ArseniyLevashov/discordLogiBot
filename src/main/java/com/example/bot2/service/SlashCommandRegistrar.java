@@ -46,6 +46,27 @@ public class SlashCommandRegistrar implements ApplicationRunner {
                 ApplicationCommandRequest.builder()
                         .name("cleanup-data")
                         .description("⚠️ Удалить ВСЕ тикеты, ресурсы и историю доставок")
+                        .build(),
+
+                ApplicationCommandRequest.builder()
+                        .name("create-warehouse")
+                        .description("Создать новый склад")
+                        .build(),
+
+                ApplicationCommandRequest.builder()
+                        .name("warehouses")
+                        .description("Показать список всех складов")
+                        .build(),
+
+                ApplicationCommandRequest.builder()
+                        .name("update-warehouse")
+                        .description("Обновить дату последнего обновления склада/складов")
+                        .build(),
+
+                ApplicationCommandRequest.builder()
+                        .name("delete-warehouse")
+                        .description("Удалить склад")
+                        .addOption(option("name", "Название склада", true))
                         .build()
         );
 

@@ -19,6 +19,7 @@ public class DiscordEventHandler {
     private final GatewayDiscordClient client;
     private final AdminCommandHandler adminHandler;
     private final UserCommandHandler userHandler;
+    private final WarehouseCommandHandler warehouseHandler;
 
     @PostConstruct
     public void registerListeners() {
@@ -30,6 +31,10 @@ public class DiscordEventHandler {
                     case "cancel-ticket" -> adminHandler.handleCancelTicket(event);
                     case "tickets"       -> adminHandler.handleListTickets(event);
                     case "cleanup-data" ->  adminHandler.handleCleanupCommand(event);
+                    case "create-warehouse" -> warehouseHandler.handleCreateWarehouse(event);
+                    case "warehouses"       -> warehouseHandler.handleListWarehouses(event);
+                    case "update-warehouse" -> warehouseHandler.handleUpdateWarehouse(event);
+                    case "delete-warehouse" -> warehouseHandler.handleDeleteWarehouse(event);
                     default              -> Mono.empty();
                 }
         ).subscribe();
@@ -70,6 +75,13 @@ public class DiscordEventHandler {
                 Long ticketId   = Long.parseLong(parts[1]);
                 Long resourceId = Long.parseLong(parts[2]);
                 return userHandler.handleDeliverModal(event, ticketId, resourceId);
+            }
+
+            if (id.equals("create_warehouse_modal")) {
+                return warehouseHandler.handleCreateWarehouseModal(event);
+            }
+            if (id.equals("update_warehouse_modal")) {
+                return warehouseHandler.handleUpdateWarehouseModal(event);
             }
 
             return Mono.empty();
