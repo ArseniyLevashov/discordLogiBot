@@ -1,5 +1,6 @@
 package com.example.bot2.service;
 
+import com.example.bot2.entity.DeliveryTicket;
 import com.example.bot2.entity.TicketResource;
 import discord4j.core.event.domain.interaction.ButtonInteractionEvent;
 import discord4j.core.event.domain.interaction.ModalSubmitInteractionEvent;
@@ -29,8 +30,16 @@ public class UserCommandHandler {
      * Кнопка "Я доставил!" — показываем Select Menu с выбором ресурса
      */
     public Mono<Void> handleDeliverButton(ButtonInteractionEvent event, Long ticketId) {
-        return deliveryService.getTicketById(ticketId)
-                .map(ticket -> {
+        return event.deferReply().withEphemeral(true)
+                .then(Mono.fromCallable(() -> deliveryService.getTicketById(ticketId)))
+                .flatMap(opt -> {
+                    if (opt.isEmpty()) {
+                        return event.editReply()
+                                .withContentOrNull("❌ Тикет не найден")
+                                .then();
+                    }
+
+                    DeliveryTicket ticket = opt.get();
                     List<SelectMenu.Option> options = ticket.getResources().stream()
                             .filter(r -> !r.isCompleted())
                             .map(r -> SelectMenu.Option.of(
@@ -41,23 +50,20 @@ public class UserCommandHandler {
                             .collect(Collectors.toList());
 
                     if (options.isEmpty()) {
-                        return event.reply()
-                                .withEphemeral(true)
-                                .withContent("✅ Все ресурсы уже доставлены!");
+                        return event.editReply()
+                                .withContentOrNull("✅ Все ресурсы уже доставлены!")
+                                .then();
                     }
 
                     SelectMenu selectMenu = SelectMenu.of(
-                            "resource_select:" + ticketId,
-                            options
+                            "resource_select:" + ticketId, options
                     ).withPlaceholder("Выбери ресурс который ты доставил");
 
-                    return event.reply()
-                            .withEphemeral(true)
-                            .withContent("Какой ресурс ты доставил?")
-                            .withComponents(ActionRow.of(selectMenu));
-                })
-                .orElse(event.reply().withEphemeral(true).withContent("❌ Тикет не найден"))
-                .then();
+                    return event.editReply()
+                            .withContentOrNull("Какой ресурс ты доставил?")
+                            .withComponentsOrNull(List.of(ActionRow.of(selectMenu)))
+                            .then();
+                });
     }
 
     /**

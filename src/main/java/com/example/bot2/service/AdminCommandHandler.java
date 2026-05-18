@@ -47,17 +47,12 @@ public class AdminCommandHandler {
      * /create-ticket resource:Железо emoji:⚙️ amount:10000 location:Склад-3
      */
     public Mono<Void> handleCreateTicket(ChatInputInteractionEvent event) {
-        boolean hasFacRole = event.getInteraction().getMember()
+        boolean hasRole = event.getInteraction().getMember()
                 .map(member -> member.getRoleIds().stream()
                         .anyMatch(id -> id.asString().equals(facilityManagerRoleId)))
                 .orElse(false);
 
-        boolean hasLogiRole = event.getInteraction().getMember()
-                .map(member -> member.getRoleIds().stream()
-                        .anyMatch(id -> id.asString().equals(warehouseManagerRoleId)))
-                .orElse(false);
-
-        if (!hasFacRole && !hasLogiRole) {
+        if (!hasRole) {
             return event.reply()
                     .withEphemeral(true)
                     .withContent("❌ Духи завода не подчиняться самозванцу!");
@@ -106,12 +101,7 @@ public class AdminCommandHandler {
                         .anyMatch(id -> id.asString().equals(facilityManagerRoleId)))
                 .orElse(false);
 
-        boolean hasLogiRole = event.getInteraction().getMember()
-                .map(member -> member.getRoleIds().stream()
-                        .anyMatch(id -> id.asString().equals(warehouseManagerRoleId)))
-                .orElse(false);
-
-        if (!hasRole && !hasLogiRole) {
+        if (!hasRole) {
             return event.reply().withEphemeral(true)
                     .withContent("❌ Духи завода не подчинятся самозванцу!");
         }
@@ -222,71 +212,73 @@ public class AdminCommandHandler {
                         .anyMatch(id -> id.asString().equals(facilityManagerRoleId)))
                 .orElse(false);
 
-        boolean hasLogiRole = event.getInteraction().getMember()
-                .map(member -> member.getRoleIds().stream()
-                        .anyMatch(id -> id.asString().equals(warehouseManagerRoleId)))
-                .orElse(false);
-
-        if (!hasRole && !hasLogiRole) {
-            return event.reply().withEphemeral(true).withContent("❌ Духи завода не подчинятся самозванцу!");
+        if (!hasRole) {
+            return event.reply().withEphemeral(true).withContent("❌ Нет прав!");
         }
 
         long ticketId = getLongOption(event, "id");
 
-        return deliveryService.cancelTicket(ticketId)
-                .map(ticket ->
-                        event.reply()
-                                .withEphemeral(true)
-                                .withContent("✅ Тикет #" + ticketId + " отменён")
-                                .then(refreshTicketMessage(ticket, event.getClient()))
-                )
-                .orElseGet(() -> event.reply()
-                        .withEphemeral(true)
-                        .withContent("❌ Тикет не найден")
-                );
+        return event.deferReply().withEphemeral(true)
+                .then(Mono.fromCallable(() -> deliveryService.cancelTicket(ticketId)))
+                .flatMap(opt -> {
+                    if (opt.isEmpty()) {
+                        return event.editReply()
+                                .withContentOrNull("❌ Тикет не найден")
+                                .then();
+                    }
+                    return event.editReply()
+                            .withContentOrNull("✅ Тикет #" + ticketId + " отменён")
+                            .then(refreshTicketMessage(opt.get(), event.getClient()))
+                            .then();
+                });
     }
 
     /**
      * /tickets — список открытых тикетов
      */
     public Mono<Void> handleListTickets(ChatInputInteractionEvent event) {
-        List<DeliveryTicket> open = deliveryService.getOpenTickets();
+        // ← deferReply сразу
+        return event.deferReply().withEphemeral(true)
+                .then(Mono.fromCallable(() -> deliveryService.getOpenTickets()))
+                .flatMap(open -> {
+                    if (open.isEmpty()) {
+                        return event.editReply()
+                                .withContentOrNull("📭 Активных тикетов нет")
+                                .then();
+                    }
 
-        if (open.isEmpty()) {
-            return event.reply()
-                    .withEphemeral(true)
-                    .withContent("📭 Активных тикетов нет");
-        }
+                    StringBuilder sb = new StringBuilder();
+                    for (DeliveryTicket t : open) {
+                        sb.append(String.format("**#%d** 📍 %s\n", t.getId(), t.getLocation()));
 
-        StringBuilder sb = new StringBuilder();
-        for (DeliveryTicket t : open) {
-            sb.append(String.format("**#%d** 📍 %s\n", t.getId(), t.getLocation()));
+                        if (t.getDescription() != null && !t.getDescription().isBlank()) {
+                            sb.append(String.format("  📝 %s\n", t.getDescription()));
+                        }
 
-            // Описание если есть
-            if (t.getDescription() != null && !t.getDescription().isBlank()) {
-                sb.append(String.format("  📝 %s\n", t.getDescription()));
-            }
+                        for (TicketResource r : t.getResources()) {
+                            int percent = r.getProgressPercent();
+                            String status = percent >= 100 ? "✅" : percent >= 50 ? "🟧" : "🟥";
+                            sb.append(String.format("  %s %s — %,d/%,d (%d%%)\n",
+                                    status, r.getResourceName(),
+                                    r.getDeliveredAmount(), r.getTargetAmount(), percent));
+                        }
+                        sb.append("\n");
+                    }
 
-            for (TicketResource r : t.getResources()) {
-                int percent = r.getProgressPercent();
-                String status = percent >= 100 ? "✅" : percent >= 50 ? "🟧" : "🟥";
-                sb.append(String.format("  %s %s — %,d/%,d (%d%%)\n",
-                        status,
-                        r.getResourceName(),
-                        r.getDeliveredAmount(),
-                        r.getTargetAmount(),
-                        percent));
-            }
-            sb.append("\n");
-        }
-
-        return event.reply()
-                .withEphemeral(true)
-                .withEmbeds(discord4j.core.spec.EmbedCreateSpec.builder()
-                        .color(Color.of(0x3498DB))
-                        .title("📋 Активные тикеты доставки")
-                        .description(sb.toString())
-                        .build());
+                    return event.editReply()
+                            .withEmbeds(EmbedCreateSpec.builder()
+                                    .color(Color.of(0x3498DB))
+                                    .title("📋 Активные тикеты доставки")
+                                    .description(sb.toString())
+                                    .build())
+                            .then();
+                })
+                .onErrorResume(e -> {
+                    log.error("Error listing tickets: ", e);
+                    return event.editReply()
+                            .withContentOrNull("❌ Ошибка: " + e.getMessage())
+                            .then();
+                });
     }
 
     /**
