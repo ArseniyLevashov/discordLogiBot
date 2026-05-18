@@ -56,6 +56,9 @@ public class DiscordEventHandler {
                 Long ticketId = Long.parseLong(id.split(":")[1]);
                 return userHandler.handleResourceSelect(event, ticketId);
             }
+            if (id.equals("warehouse_update_select")) {
+                return warehouseHandler.handleUpdateWarehouseSelect(event);
+            }
             return Mono.empty();
         }).subscribe();
 
@@ -79,9 +82,6 @@ public class DiscordEventHandler {
 
             if (id.equals("create_warehouse_modal")) {
                 return warehouseHandler.handleCreateWarehouseModal(event);
-            }
-            if (id.equals("update_warehouse_modal")) {
-                return warehouseHandler.handleUpdateWarehouseModal(event);
             }
 
             return Mono.empty();

@@ -3,9 +3,11 @@ package com.example.bot2.service;
 import com.example.bot2.entity.Warehouse;
 import discord4j.core.event.domain.interaction.ChatInputInteractionEvent;
 import discord4j.core.event.domain.interaction.ModalSubmitInteractionEvent;
+import discord4j.core.event.domain.interaction.SelectMenuInteractionEvent;
 import discord4j.core.object.command.ApplicationCommandInteractionOption;
 import discord4j.core.object.command.ApplicationCommandInteractionOptionValue;
 import discord4j.core.object.component.ActionRow;
+import discord4j.core.object.component.SelectMenu;
 import discord4j.core.object.component.TextInput;
 import discord4j.core.spec.EmbedCreateSpec;
 import discord4j.rest.util.Color;
@@ -15,6 +17,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -133,38 +136,61 @@ public class WarehouseCommandHandler {
      * /update-warehouse — открывает Modal для обновления (доступно всем)
      */
     public Mono<Void> handleUpdateWarehouse(ChatInputInteractionEvent event) {
-        return event.presentModal()
-                .withTitle("Обновить склады")
-                .withCustomId("update_warehouse_modal")
-                .withComponents(
-                        ActionRow.of(TextInput.paragraph("names",
-                                        "Названия складов (каждое с новой строки)",
-                                        1, 1000)
-                                .required(true)
-                                .placeholder("СТРБ-1\nКаллумс\nПорт"))
-                );
+        return event.deferReply().withEphemeral(true)
+                .then(Mono.fromCallable(() -> warehouseService.getAllWarehouses()))
+                .flatMap(warehouses -> {
+                    if (warehouses.isEmpty()) {
+                        return event.editReply()
+                                .withContentOrNull("📭 Складов пока нет")
+                                .then();
+                    }
+
+                    if (warehouses.size() > 25) {
+                        return event.editReply()
+                                .withContentOrNull("⚠️ Слишком много складов для выбора (макс 25). Удалите неиспользуемые.")
+                                .then();
+                    }
+
+                    List<SelectMenu.Option> options = warehouses.stream()
+                            .map(w -> {
+                                long hoursAgo = java.time.Duration.between(
+                                        w.getLastUpdatedAt(),
+                                        LocalDateTime.now()).toHours();
+                                return SelectMenu.Option.of(
+                                        w.getName() + "  (обновлён " + hoursAgo + "ч назад)",
+                                        w.getName()
+                                );
+                            })
+                            .collect(Collectors.toList());
+
+                    SelectMenu menu = SelectMenu.of("warehouse_update_select", options)
+                            .withPlaceholder("Выбери склады которые обновил")
+                            .withMinValues(1)
+                            .withMaxValues(Math.min(warehouses.size(), 25));
+
+                    return event.editReply()
+                            .withContentOrNull("Какие склады ты обновил?")
+                            .withComponentsOrNull(List.of(ActionRow.of(menu)))
+                            .then();
+                })
+                .onErrorResume(e -> {
+                    log.error("Error opening update menu: ", e);
+                    return event.editReply()
+                            .withContentOrNull("❌ Ошибка: " + e.getMessage())
+                            .then();
+                });
     }
 
     /**
      * Обработка Modal обновления
      */
-    public Mono<Void> handleUpdateWarehouseModal(ModalSubmitInteractionEvent event) {
+    public Mono<Void> handleUpdateWarehouseSelect(SelectMenuInteractionEvent event) {
         String userName = event.getInteraction().getUser().getUsername();
-        String rawNames = getInputValue(event, "names");
-
-        if (rawNames.isEmpty()) {
-            return event.reply().withEphemeral(true)
-                    .withContent("❌ Укажи хотя бы один склад!");
-        }
-
-        List<String> names = Arrays.stream(rawNames.split("\\n"))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .collect(Collectors.toList());
+        List<String> selectedNames = event.getValues();
 
         return event.deferReply().withEphemeral(false)
                 .then(Mono.fromCallable(() ->
-                        warehouseService.updateLastUpdated(names, userName)
+                        warehouseService.updateLastUpdated(selectedNames, userName)
                 ))
                 .flatMap(result -> {
                     StringBuilder msg = new StringBuilder();
@@ -188,7 +214,7 @@ public class WarehouseCommandHandler {
                             .then();
                 })
                 .onErrorResume(e -> {
-                    log.error("Error updating warehouses: ", e);
+                    log.error("Error in select handler: ", e);
                     return event.editReply()
                             .withContentOrNull("❌ Ошибка: " + e.getMessage())
                             .then();
