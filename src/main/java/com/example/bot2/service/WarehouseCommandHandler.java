@@ -1,7 +1,11 @@
 package com.example.bot2.service;
 
 import com.example.bot2.entity.Warehouse;
+import com.example.bot2.entity.WarehousePanel;
+import discord4j.common.util.Snowflake;
+import discord4j.core.GatewayDiscordClient;
 import discord4j.core.event.domain.interaction.ChatInputInteractionEvent;
+import discord4j.core.event.domain.interaction.InteractionCreateEvent;
 import discord4j.core.event.domain.interaction.ModalSubmitInteractionEvent;
 import discord4j.core.event.domain.interaction.SelectMenuInteractionEvent;
 import discord4j.core.object.command.ApplicationCommandInteractionOption;
@@ -10,6 +14,7 @@ import discord4j.core.object.component.ActionRow;
 import discord4j.core.object.component.SelectMenu;
 import discord4j.core.object.component.TextInput;
 import discord4j.core.spec.EmbedCreateSpec;
+import discord4j.core.spec.MessageCreateSpec;
 import discord4j.rest.util.Color;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,7 +22,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -32,7 +40,11 @@ public class WarehouseCommandHandler {
     @Value("${discord.manager-role-id}")
     private String facilityManagerRoleId;
 
+    @Value("${discord.manager-role-id}")
+    private String warehouseManagerRoleId;
+
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
+    private static final ZoneId MOSCOW = ZoneId.of("Europe/Moscow");
 
     /**
      * /create-warehouse — открывает Modal (только для менеджеров)
@@ -132,6 +144,36 @@ public class WarehouseCommandHandler {
                 });
     }
 
+    // === Создание панели (менеджер) ===
+
+    public Mono<Void> handleCreatePanel(ChatInputInteractionEvent event) {
+        if (!isManager(event)) {
+            return event.reply().withEphemeral(true).withContent("❌ Нет прав!");
+        }
+
+        return event.deferReply().withEphemeral(true)
+                .then(Mono.fromCallable(() -> warehouseService.getAllWarehouses()))
+                .flatMap(warehouses -> {
+                    EmbedCreateSpec embed = buildPanelEmbed(warehouses);
+
+                    return event.getInteraction().getChannel()
+                            .flatMap(channel -> channel.createMessage(
+                                    MessageCreateSpec.builder().addEmbed(embed).build()))
+                            .doOnNext(msg -> warehouseService.savePanel(
+                                    msg.getId().asString(),
+                                    msg.getChannelId().asString()))
+                            .then(event.editReply()
+                                    .withContentOrNull("✅ Панель складов создана")
+                                    .then());
+                })
+                .onErrorResume(e -> {
+                    log.error("Error creating panel: ", e);
+                    return event.editReply()
+                            .withContentOrNull("❌ Ошибка: " + e.getMessage())
+                            .then();
+                });
+    }
+
     /**
      * /update-warehouse — открывает Modal для обновления (доступно всем)
      */
@@ -141,44 +183,34 @@ public class WarehouseCommandHandler {
                 .flatMap(warehouses -> {
                     if (warehouses.isEmpty()) {
                         return event.editReply()
-                                .withContentOrNull("📭 Складов пока нет")
-                                .then();
+                                .withContentOrNull("📭 Складов пока нет").then();
                     }
-
                     if (warehouses.size() > 25) {
                         return event.editReply()
-                                .withContentOrNull("⚠️ Слишком много складов для выбора (макс 25). Удалите неиспользуемые.")
-                                .then();
+                                .withContentOrNull("⚠️ Слишком много складов (макс 25)").then();
                     }
 
                     List<SelectMenu.Option> options = warehouses.stream()
                             .map(w -> {
-                                long hoursAgo = java.time.Duration.between(
-                                        w.getLastUpdatedAt(),
-                                        LocalDateTime.now()).toHours();
+                                long h = hoursAgo(w.getLastUpdatedAt());
                                 return SelectMenu.Option.of(
-                                        w.getName() + "  (обновлён " + hoursAgo + "ч назад)",
-                                        w.getName()
-                                );
+                                        w.getName() + "  (" + h + "ч назад)",
+                                        w.getName());
                             })
                             .collect(Collectors.toList());
 
                     SelectMenu menu = SelectMenu.of("warehouse_update_select", options)
                             .withPlaceholder("Выбери склады которые обновил")
                             .withMinValues(1)
-                            .withMaxValues(Math.min(warehouses.size(), 25));
+                            .withMaxValues(warehouses.size());
 
                     return event.editReply()
                             .withContentOrNull("Какие склады ты обновил?")
                             .withComponentsOrNull(List.of(ActionRow.of(menu)))
                             .then();
                 })
-                .onErrorResume(e -> {
-                    log.error("Error opening update menu: ", e);
-                    return event.editReply()
-                            .withContentOrNull("❌ Ошибка: " + e.getMessage())
-                            .then();
-                });
+                .onErrorResume(e -> event.editReply()
+                        .withContentOrNull("❌ Ошибка: " + e.getMessage()).then());
     }
 
     /**
@@ -186,38 +218,31 @@ public class WarehouseCommandHandler {
      */
     public Mono<Void> handleUpdateWarehouseSelect(SelectMenuInteractionEvent event) {
         String userName = event.getInteraction().getUser().getUsername();
-        List<String> selectedNames = event.getValues();
+        List<String> selected = event.getValues();
 
-        return event.deferReply().withEphemeral(false)
+        // Ответ эфемерный — видит только тот кто обновлял
+        return event.deferReply().withEphemeral(true)
                 .then(Mono.fromCallable(() ->
-                        warehouseService.updateLastUpdated(selectedNames, userName)
-                ))
+                        warehouseService.updateLastUpdated(selected, userName)))
                 .flatMap(result -> {
                     StringBuilder msg = new StringBuilder();
                     if (!result.getUpdated().isEmpty()) {
-                        msg.append("✅ **Обновлены:**\n");
-                        for (String n : result.getUpdated()) msg.append("  • ").append(n).append("\n");
+                        msg.append("✅ Обновлены: ")
+                                .append(String.join(", ", result.getUpdated()));
                     }
                     if (!result.getNotFound().isEmpty()) {
-                        if (msg.length() > 0) msg.append("\n");
-                        msg.append("❌ **Не найдены:**\n");
-                        for (String n : result.getNotFound()) msg.append("  • ").append(n).append("\n");
+                        msg.append("\n❌ Не найдены: ")
+                                .append(String.join(", ", result.getNotFound()));
                     }
 
                     return event.editReply()
-                            .withEmbedsOrNull(List.of(EmbedCreateSpec.builder()
-                                    .color(result.getNotFound().isEmpty()
-                                            ? Color.of(0x2ECC71) : Color.of(0xF39C12))
-                                    .title("Обновление складов от " + userName)
-                                    .description(msg.toString())
-                                    .build()))
-                            .then();
+                            .withContentOrNull(msg.toString())
+                            .then(refreshPanel(event.getClient())); // ← обновляем панель
                 })
                 .onErrorResume(e -> {
-                    log.error("Error in select handler: ", e);
+                    log.error("Error in select: ", e);
                     return event.editReply()
-                            .withContentOrNull("❌ Ошибка: " + e.getMessage())
-                            .then();
+                            .withContentOrNull("❌ Ошибка: " + e.getMessage()).then();
                 });
     }
 
@@ -276,4 +301,80 @@ public class WarehouseCommandHandler {
                 .map(String::trim)
                 .orElse("");
     }
+
+    // === Обновление панели в канале ===
+
+    public Mono<Void> refreshPanel(GatewayDiscordClient client) {
+        return Mono.fromCallable(() -> warehouseService.getPanel())
+                .flatMap(opt -> {
+                    if (opt.isEmpty()) return Mono.empty();
+                    WarehousePanel panel = opt.get();
+
+                    List<Warehouse> warehouses = warehouseService.getAllWarehouses();
+                    EmbedCreateSpec embed = buildPanelEmbed(warehouses);
+
+                    return client.getMessageById(
+                                    Snowflake.of(panel.getChannelId()),
+                                    Snowflake.of(panel.getMessageId()))
+                            .flatMap(msg -> msg.edit().withEmbeds(embed))
+                            .doOnError(e -> log.error("Panel refresh failed: {}", e.getMessage()))
+                            .onErrorResume(e -> Mono.empty())
+                            .then();
+                });
+    }
+
+    // === Построение embed панели ===
+
+    private EmbedCreateSpec buildPanelEmbed(List<Warehouse> warehouses) {
+        StringBuilder sb = new StringBuilder();
+
+        if (warehouses.isEmpty()) {
+            sb.append("*Складов пока нет*");
+        } else {
+            for (Warehouse w : warehouses) {
+                long h = hoursAgo(w.getLastUpdatedAt());
+                String dot = h >= 42 ? "🔴" : h >= 24 ? "🟡" : "🟢";
+
+                sb.append(dot).append(" **").append(w.getName()).append("**\n");
+                sb.append("  📍 ").append(w.getLocation()).append("\n");
+                if (w.getDescription() != null && !w.getDescription().isBlank()) {
+                    sb.append("  📝 ").append(w.getDescription()).append("\n");
+                }
+                sb.append("  🔄 ").append(formatMoscow(w.getLastUpdatedAt()))
+                        .append(" МСК — **").append(h).append("ч назад**")
+                        .append(" (").append(w.getLastUpdatedBy()).append(")\n\n");
+            }
+        }
+
+        return EmbedCreateSpec.builder()
+                .color(Color.of(0x3498DB))
+                .title("📦 Состояние складов")
+                .description(sb.toString())
+                .footer("Последнее обновление панели: "
+                        + formatMoscow(LocalDateTime.now()) + " МСК", "")
+                .build();
+    }
+
+    // === Утилиты времени (МСК) ===
+
+    /** Конвертирует серверное UTC-время в строку московского времени */
+    private String formatMoscow(LocalDateTime utcTime) {
+        return utcTime.atZone(ZoneOffset.UTC)
+                .withZoneSameInstant(MOSCOW)
+                .format(FMT);
+    }
+
+    /** Сколько часов прошло с момента обновления */
+    private long hoursAgo(LocalDateTime lastUpdated) {
+        return Duration.between(lastUpdated, LocalDateTime.now()).toHours();
+    }
+
+    private boolean isManager(InteractionCreateEvent event) {
+        return event.getInteraction().getMember()
+                .map(m -> m.getRoleIds().stream()
+                        .anyMatch(id -> id.asString().equals(facilityManagerRoleId)
+                                || id.asString().equals(warehouseManagerRoleId)))
+                .orElse(false);
+    }
+
 }

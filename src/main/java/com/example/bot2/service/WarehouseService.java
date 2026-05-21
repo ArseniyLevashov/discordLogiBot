@@ -1,6 +1,8 @@
 package com.example.bot2.service;
 
 import com.example.bot2.entity.Warehouse;
+import com.example.bot2.entity.WarehousePanel;
+import com.example.bot2.repository.WarehousePanelRepository;
 import com.example.bot2.repository.WarehouseRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,6 +19,8 @@ import java.util.*;
 public class WarehouseService {
 
     private final WarehouseRepository warehouseRepo;
+
+    private final WarehousePanelRepository panelRepo;
 
     public Warehouse createWarehouse(String name, String location, String description,
                                      String password, String creatorName) {
@@ -74,5 +78,17 @@ public class WarehouseService {
     public static class UpdateResult {
         List<String> updated;
         List<String> notFound;
+    }
+
+    public void savePanel(String messageId, String channelId) {
+        panelRepo.deleteAll(); // панель всегда одна
+        WarehousePanel p = new WarehousePanel();
+        p.setMessageId(messageId);
+        p.setChannelId(channelId);
+        panelRepo.save(p);
+    }
+
+    public Optional<WarehousePanel> getPanel() {
+        return panelRepo.findAll().stream().findFirst();
     }
 }

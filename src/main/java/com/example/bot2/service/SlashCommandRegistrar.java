@@ -49,6 +49,11 @@ public class SlashCommandRegistrar implements ApplicationRunner {
                         .build(),
 
                 ApplicationCommandRequest.builder()
+                        .name("warehouse-panel")
+                        .description("Создать постоянную панель состояния складов")
+                        .build(),
+
+                ApplicationCommandRequest.builder()
                         .name("create-warehouse")
                         .description("Создать новый склад")
                         .build(),
