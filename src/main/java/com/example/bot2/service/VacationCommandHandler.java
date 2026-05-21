@@ -37,10 +37,10 @@ public class VacationCommandHandler {
     @Value("${discord.vacation-role-id}")
     private String vacationRoleId;
 
-    @Value("${discord.facility-manager-role-id}")
-    private String facilityManagerRoleId;
+    @Value("${discord.manager-role-id}")
+    private String officerRoleId;
 
-    @Value("${discord.warehouse-manager-role-id}")
+    @Value("${discord.main-manager-role-id}")
     private String warehouseManagerRoleId;
 
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("dd.MM.yyyy");
@@ -148,7 +148,7 @@ public class VacationCommandHandler {
     public Mono<Void> handleListVacations(ChatInputInteractionEvent event) {
         boolean isManager = event.getInteraction().getMember()
                 .map(m -> m.getRoleIds().stream()
-                        .anyMatch(id -> id.asString().equals(facilityManagerRoleId)
+                        .anyMatch(id -> id.asString().equals(officerRoleId)
                                 || id.asString().equals(warehouseManagerRoleId)))
                 .orElse(false);
 
@@ -197,7 +197,7 @@ public class VacationCommandHandler {
     public Mono<Void> handleEndVacation(ChatInputInteractionEvent event) {
         boolean isManager = event.getInteraction().getMember()
                 .map(m -> m.getRoleIds().stream()
-                        .anyMatch(id -> id.asString().equals(facilityManagerRoleId)
+                        .anyMatch(id -> id.asString().equals(officerRoleId)
                                 || id.asString().equals(warehouseManagerRoleId)))
                 .orElse(false);
 
