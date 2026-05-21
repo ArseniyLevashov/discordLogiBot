@@ -21,6 +21,8 @@ public class DiscordEventHandler {
     private final UserCommandHandler userHandler;
     private final WarehouseCommandHandler warehouseHandler;
 
+    private final VacationCommandHandler vacationHandler;
+
     @PostConstruct
     public void registerListeners() {
 
@@ -35,6 +37,7 @@ public class DiscordEventHandler {
                     case "warehouses"       -> warehouseHandler.handleListWarehouses(event);
                     case "update-warehouse" -> warehouseHandler.handleUpdateWarehouse(event);
                     case "delete-warehouse" -> warehouseHandler.handleDeleteWarehouse(event);
+                    case "vacation-panel" -> vacationHandler.handleVacationPanel(event);
                     default              -> Mono.empty();
                 }
         ).subscribe();
@@ -46,6 +49,9 @@ public class DiscordEventHandler {
                 Long ticketId = Long.parseLong(id.split(":")[1]);
                 return userHandler.handleDeliverButton(event, ticketId);
             }
+            if (id.equals("cleanup_confirm")) return adminHandler.handleCleanupConfirm(event);
+            if (id.equals("cleanup_cancel"))  return adminHandler.handleCleanupCancel(event);
+            if (id.equals("vacation_request")) return vacationHandler.handleVacationButton(event);
             return Mono.empty();
         }).subscribe();
 
@@ -80,22 +86,9 @@ public class DiscordEventHandler {
                 return userHandler.handleDeliverModal(event, ticketId, resourceId);
             }
 
-            if (id.equals("create_warehouse_modal")) {
-                return warehouseHandler.handleCreateWarehouseModal(event);
-            }
+            if (id.equals("create_warehouse_modal")) return warehouseHandler.handleCreateWarehouseModal(event);
+            if (id.equals("vacation_modal")) return vacationHandler.handleVacationModal(event);
 
-            return Mono.empty();
-        }).subscribe();
-
-        client.on(ButtonInteractionEvent.class, event -> {
-            String id = event.getCustomId();
-            if (id.startsWith("deliver:")) {
-                Long ticketId = Long.parseLong(id.split(":")[1]);
-                return userHandler.handleDeliverButton(event, ticketId);
-            }
-            // Новые кнопки
-            if (id.equals("cleanup_confirm")) return adminHandler.handleCleanupConfirm(event);
-            if (id.equals("cleanup_cancel"))  return adminHandler.handleCleanupCancel(event);
             return Mono.empty();
         }).subscribe();
     }

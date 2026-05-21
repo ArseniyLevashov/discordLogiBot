@@ -67,6 +67,11 @@ public class SlashCommandRegistrar implements ApplicationRunner {
                         .name("delete-warehouse")
                         .description("Удалить склад")
                         .addOption(option("name", "Название склада", true))
+                        .build(),
+
+                ApplicationCommandRequest.builder()
+                        .name("vacation-panel")
+                        .description("Создать панель с кнопкой ухода в отпуск")
                         .build()
         );
 
