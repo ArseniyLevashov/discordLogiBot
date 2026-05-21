@@ -53,13 +53,11 @@ public class VacationScheduler {
         Snowflake channelId = Snowflake.of(vacation.getChannelId());
 
         return client.getMemberById(guildId, userId)
-                // Снимаем отпускную роль, возвращаем рабочую
                 .flatMap(member -> member.removeRole(Snowflake.of(vacationRoleId), "Конец отпуска")
                         .then(member.addRole(Snowflake.of(activeRoleId), "Конец отпуска"))
                 )
-                // Отмечаем отпуск завершённым в БД
-                .then(Mono.fromRunnable(() -> vacationService.markCompleted(vacation)))
-                // Отправляем уведомление в тот же канал
+                // ← удаляем запись вместо пометки
+                .then(Mono.fromRunnable(() -> vacationService.deleteVacation(vacation)))
                 .then(client.getChannelById(channelId)
                         .ofType(MessageChannel.class)
                         .flatMap(channel -> channel.createMessage(MessageCreateSpec.builder()

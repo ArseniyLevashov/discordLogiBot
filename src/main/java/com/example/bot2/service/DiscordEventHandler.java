@@ -38,6 +38,8 @@ public class DiscordEventHandler {
                     case "update-warehouse" -> warehouseHandler.handleUpdateWarehouse(event);
                     case "delete-warehouse" -> warehouseHandler.handleDeleteWarehouse(event);
                     case "vacation-panel" -> vacationHandler.handleVacationPanel(event);
+                    case "vacations"      -> vacationHandler.handleListVacations(event);
+                    case "end-vacation"   -> vacationHandler.handleEndVacation(event);
                     default              -> Mono.empty();
                 }
         ).subscribe();

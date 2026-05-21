@@ -22,6 +22,7 @@ import reactor.core.publisher.Mono;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.List;
 
 @Component
 @RequiredArgsConstructor
@@ -35,6 +36,12 @@ public class VacationCommandHandler {
 
     @Value("${discord.vacation-role-id}")
     private String vacationRoleId;
+
+    @Value("${discord.facility-manager-role-id}")
+    private String facilityManagerRoleId;
+
+    @Value("${discord.warehouse-manager-role-id}")
+    private String warehouseManagerRoleId;
 
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("dd.MM.yyyy");
 
@@ -131,6 +138,122 @@ public class VacationCommandHandler {
                     return event.editReply()
                             .withContentOrNull("❌ Ошибка: " + e.getMessage() +
                                     "\nПроверь что у бота есть права управлять ролями.")
+                            .then();
+                });
+    }
+
+    /**
+     * /vacations — список всех активных отпусков (только менеджер)
+     */
+    public Mono<Void> handleListVacations(ChatInputInteractionEvent event) {
+        boolean isManager = event.getInteraction().getMember()
+                .map(m -> m.getRoleIds().stream()
+                        .anyMatch(id -> id.asString().equals(facilityManagerRoleId)
+                                || id.asString().equals(warehouseManagerRoleId)))
+                .orElse(false);
+
+        if (!isManager) {
+            return event.reply().withEphemeral(true)
+                    .withContent("❌ Только менеджер может просматривать отпуска!");
+        }
+
+        return event.deferReply().withEphemeral(true)
+                .then(Mono.fromCallable(() -> vacationService.getActiveVacations()))
+                .flatMap(vacations -> {
+                    if (vacations.isEmpty()) {
+                        return event.editReply()
+                                .withContentOrNull("📭 Активных отпусков нет")
+                                .then();
+                    }
+
+                    StringBuilder sb = new StringBuilder();
+                    for (Vacation v : vacations) {
+                        long daysLeft = v.getEndDate().toEpochDay() - LocalDate.now().toEpochDay();
+                        sb.append("🏖️ **").append(v.getUsername()).append("**\n")
+                                .append("  📅 До: ").append(v.getEndDate().format(FMT))
+                                .append(" (осталось ").append(daysLeft).append(" дн.)\n")
+                                .append("  🔧 Снять: `/end-vacation id:").append(v.getId()).append("`\n\n");
+                    }
+
+                    return event.editReply()
+                            .withEmbedsOrNull(List.of(EmbedCreateSpec.builder()
+                                    .color(Color.of(0x3498DB))
+                                    .title("🏖️ Активные отпуска (" + vacations.size() + ")")
+                                    .description(sb.toString())
+                                    .build()))
+                            .then();
+                })
+                .onErrorResume(e -> {
+                    log.error("Error listing vacations: ", e);
+                    return event.editReply()
+                            .withContentOrNull("❌ Ошибка: " + e.getMessage())
+                            .then();
+                });
+    }
+
+    /**
+     * /end-vacation id:5 — снять отпуск вручную (только менеджер)
+     */
+    public Mono<Void> handleEndVacation(ChatInputInteractionEvent event) {
+        boolean isManager = event.getInteraction().getMember()
+                .map(m -> m.getRoleIds().stream()
+                        .anyMatch(id -> id.asString().equals(facilityManagerRoleId)
+                                || id.asString().equals(warehouseManagerRoleId)))
+                .orElse(false);
+
+        if (!isManager) {
+            return event.reply().withEphemeral(true)
+                    .withContent("❌ Только менеджер может снимать отпуска!");
+        }
+
+        long vacationId = event.getOption("id")
+                .flatMap(o -> o.getValue())
+                .map(v -> v.asLong())
+                .orElse(0L);
+
+        return event.deferReply().withEphemeral(true)
+                .then(Mono.fromCallable(() -> vacationService.getById(vacationId)))
+                .flatMap(opt -> {
+                    if (opt.isEmpty()) {
+                        return event.editReply()
+                                .withContentOrNull("❌ Отпуск #" + vacationId + " не найден")
+                                .then();
+                    }
+
+                    Vacation vacation = opt.get();
+                    Snowflake guildId = Snowflake.of(vacation.getGuildId());
+                    Snowflake userId  = Snowflake.of(vacation.getUserId());
+
+                    return event.getClient().getMemberById(guildId, userId)
+                            .flatMap(member ->
+                                    member.removeRole(Snowflake.of(vacationRoleId), "Отпуск снят менеджером")
+                                            .then(member.addRole(Snowflake.of(activeRoleId), "Отпуск снят менеджером"))
+                            )
+                            .then(Mono.fromRunnable(() -> vacationService.deleteVacation(vacation)))
+                            // Уведомление в канал откуда был оформлен отпуск
+                            .then(event.getClient().getChannelById(Snowflake.of(vacation.getChannelId()))
+                                    .ofType(discord4j.core.object.entity.channel.MessageChannel.class)
+                                    .flatMap(channel -> channel.createMessage(MessageCreateSpec.builder()
+                                            .content("<@" + vacation.getUserId() + ">")
+                                            .addEmbed(EmbedCreateSpec.builder()
+                                                    .color(Color.of(0xF39C12))
+                                                    .title("🏖️ Отпуск завершён досрочно")
+                                                    .description(String.format(
+                                                            "Отпуск пользователя **%s** снят менеджером.\n" +
+                                                                    "Роли возвращены.",
+                                                            vacation.getUsername()))
+                                                    .build())
+                                            .build()))
+                            )
+                            .then(event.editReply()
+                                    .withContentOrNull("✅ Отпуск #" + vacationId +
+                                            " (" + vacation.getUsername() + ") снят, роли возвращены")
+                                    .then());
+                })
+                .onErrorResume(e -> {
+                    log.error("Error ending vacation: ", e);
+                    return event.editReply()
+                            .withContentOrNull("❌ Ошибка: " + e.getMessage())
                             .then();
                 });
     }

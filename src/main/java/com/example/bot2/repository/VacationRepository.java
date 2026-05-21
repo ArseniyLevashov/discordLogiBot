@@ -11,4 +11,7 @@ public interface VacationRepository extends JpaRepository<Vacation, Long> {
     // Активные отпуска которые закончились (дата <= сегодня)
     List<Vacation> findByStatusAndEndDateLessThanEqual(
             Vacation.VacationStatus status, LocalDate date);
+
+    // Для списка активных отпусков
+    List<Vacation> findByStatusOrderByEndDateAsc(Vacation.VacationStatus status);
 }

@@ -72,6 +72,17 @@ public class SlashCommandRegistrar implements ApplicationRunner {
                 ApplicationCommandRequest.builder()
                         .name("vacation-panel")
                         .description("Создать панель с кнопкой ухода в отпуск")
+                        .build(),
+
+                ApplicationCommandRequest.builder()
+                        .name("vacations")
+                        .description("Показать список всех активных отпусков")
+                        .build(),
+
+                ApplicationCommandRequest.builder()
+                        .name("end-vacation")
+                        .description("Снять отпуск вручную по ID")
+                        .addOption(optionLong("id", "ID отпуска (из списка /vacations)", true))
                         .build()
         );
 

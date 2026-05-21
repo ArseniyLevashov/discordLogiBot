@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @Transactional
@@ -35,8 +36,18 @@ public class VacationService {
                 Vacation.VacationStatus.ACTIVE, LocalDate.now());
     }
 
-    public void markCompleted(Vacation vacation) {
-        vacation.setStatus(Vacation.VacationStatus.COMPLETED);
-        vacationRepo.save(vacation);
+    // Все активные отпуска (для просмотра менеджером)
+    public List<Vacation> getActiveVacations() {
+        return vacationRepo.findByStatusOrderByEndDateAsc(Vacation.VacationStatus.ACTIVE);
+    }
+
+    public Optional<Vacation> getById(Long id) {
+        return vacationRepo.findById(id);
+    }
+
+    // Удаляем запись об отпуске
+    public void deleteVacation(Vacation vacation) {
+        vacationRepo.delete(vacation);
+        log.info("Vacation #{} for {} deleted", vacation.getId(), vacation.getUsername());
     }
 }
