@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -24,6 +25,8 @@ import java.util.List;
 public class WarehouseScheduler {
 
     private final WarehouseRepository warehouseRepo;
+
+    private final WarehouseCommandHandler warehouseHandler;
     private final GatewayDiscordClient client;
 
     @Value("${discord.stale-warehouse-channel-id}")
@@ -72,6 +75,15 @@ public class WarehouseScheduler {
                         .build()))
                 .doOnSuccess(m -> log.info("Stale warehouse notification sent"))
                 .doOnError(e -> log.error("Failed to send notification: {}", e.getMessage()))
+                .subscribe();
+    }
+
+    @Scheduled(cron = "0 0 * * * *", zone = "Europe/Moscow")
+    public void refreshPanelHourly() {
+        warehouseHandler.refreshPanel(client)
+                .doOnSuccess(v -> log.debug("Hourly panel refresh done"))
+                .doOnError(e -> log.error("Hourly panel refresh failed: {}", e.getMessage()))
+                .onErrorResume(e -> Mono.empty())
                 .subscribe();
     }
 }

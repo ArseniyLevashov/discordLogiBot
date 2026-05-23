@@ -115,16 +115,17 @@ public class WarehouseCommandHandler {
 
                     StringBuilder sb = new StringBuilder();
                     for (Warehouse w : warehouses) {
-                        sb.append("🏭 **").append(w.getName()).append("**\n");
-                        sb.append("  📍 Расположение: ").append(w.getLocation()).append("\n");
-                        sb.append("  🔑 Пароль: `").append(w.getPassword()).append("`\n");
+                        long h = hoursAgo(w.getLastUpdatedAt());
+                        String dot = h >= 42 ? "🔴" : h >= 24 ? "🟡" : "🟢";
 
+                        sb.append(dot).append(" **").append(w.getName()).append("**\n");
+                        sb.append("  📍 ").append(w.getLocation()).append("\n");
+                        sb.append("  🔑 Пароль: `").append(w.getPassword()).append("`\n"); // ← добавь
                         if (w.getDescription() != null && !w.getDescription().isBlank()) {
                             sb.append("  📝 ").append(w.getDescription()).append("\n");
                         }
-                        sb.append("  📅 Создан: ").append(w.getCreatedAt().format(FMT))
-                                .append(" (").append(w.getCreatedBy()).append(")\n");
-                        sb.append("  🔄 Обновлён: ").append(w.getLastUpdatedAt().format(FMT))
+                        sb.append("  🔄 ").append(formatMoscow(w.getLastUpdatedAt()))
+                                .append(" МСК — **").append(h).append("ч назад**")
                                 .append(" (").append(w.getLastUpdatedBy()).append(")\n\n");
                     }
 
@@ -337,6 +338,7 @@ public class WarehouseCommandHandler {
 
                 sb.append(dot).append(" **").append(w.getName()).append("**\n");
                 sb.append("  📍 ").append(w.getLocation()).append("\n");
+                sb.append("  🔑 Пароль: `").append(w.getPassword()).append("`\n"); // ← добавь
                 if (w.getDescription() != null && !w.getDescription().isBlank()) {
                     sb.append("  📝 ").append(w.getDescription()).append("\n");
                 }
