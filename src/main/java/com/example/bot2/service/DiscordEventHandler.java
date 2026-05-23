@@ -27,29 +27,23 @@ public class DiscordEventHandler {
     public void registerListeners() {
 
         // Slash-команды
-        client.on(ChatInputInteractionEvent.class, event -> {
-            Mono<Void> result = Mono.empty();
-
-            switch (event.getCommandName()) {
-                case "create-ticket" -> adminHandler.handleCreateTicket(event);
-                case "cancel-ticket" -> adminHandler.handleCancelTicket(event);
-                case "tickets" -> adminHandler.handleListTickets(event);
-                case "cleanup-data" -> adminHandler.handleCleanupCommand(event);
-                case "create-warehouse" -> warehouseHandler.handleCreateWarehouse(event);
-                case "warehouses" -> warehouseHandler.handleListWarehouses(event);
-                case "update-warehouse" -> warehouseHandler.handleUpdateWarehouse(event);
-                case "delete-warehouse" -> warehouseHandler.handleDeleteWarehouse(event);
-                case "vacation-panel" -> vacationHandler.handleVacationPanel(event);
-                case "vacations" -> vacationHandler.handleListVacations(event);
-                case "end-vacation" -> vacationHandler.handleEndVacation(event);
-                case "warehouse-panel" -> warehouseHandler.handleCreatePanel(event);
-                default -> Mono.empty();
-            }
-            return result.onErrorResume(e -> {
-                log.warn("Interaction handler error (likely network): {}", e.getMessage());
-                return Mono.empty();
-            });
-        }).subscribe();
+        client.on(ChatInputInteractionEvent.class, event ->
+                switch (event.getCommandName()) {
+                    case "create-ticket" -> adminHandler.handleCreateTicket(event);
+                    case "cancel-ticket" -> adminHandler.handleCancelTicket(event);
+                    case "tickets"       -> adminHandler.handleListTickets(event);
+                    case "cleanup-data" ->  adminHandler.handleCleanupCommand(event);
+                    case "create-warehouse" -> warehouseHandler.handleCreateWarehouse(event);
+                    case "warehouses"       -> warehouseHandler.handleListWarehouses(event);
+                    case "update-warehouse" -> warehouseHandler.handleUpdateWarehouse(event);
+                    case "delete-warehouse" -> warehouseHandler.handleDeleteWarehouse(event);
+                    case "vacation-panel" -> vacationHandler.handleVacationPanel(event);
+                    case "vacations"      -> vacationHandler.handleListVacations(event);
+                    case "end-vacation"   -> vacationHandler.handleEndVacation(event);
+                    case "warehouse-panel"   -> warehouseHandler.handleCreatePanel(event);
+                    default              -> Mono.empty();
+                }
+        ).subscribe();
 
         // Кнопки
         client.on(ButtonInteractionEvent.class, event -> {
