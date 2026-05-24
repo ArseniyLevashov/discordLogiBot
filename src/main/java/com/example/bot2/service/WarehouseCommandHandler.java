@@ -318,7 +318,11 @@ public class WarehouseCommandHandler {
                                     Snowflake.of(panel.getChannelId()),
                                     Snowflake.of(panel.getMessageId()))
                             .flatMap(msg -> msg.edit().withEmbeds(embed))
-                            .doOnError(e -> log.error("Panel refresh failed: {}", e.getMessage()))
+                            // ← 2 повтора с задержкой при сетевом сбое
+                            .retryWhen(reactor.util.retry.Retry
+                                    .backoff(2, java.time.Duration.ofSeconds(3)))
+                            .doOnError(e -> log.error("Panel refresh failed after retries: {}",
+                                    e.getMessage()))
                             .onErrorResume(e -> Mono.empty())
                             .then();
                 });

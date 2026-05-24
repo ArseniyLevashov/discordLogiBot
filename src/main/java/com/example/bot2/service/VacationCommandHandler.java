@@ -80,7 +80,13 @@ public class VacationCommandHandler {
                         TextInput.small("end_date", "До какой даты (ДД.ММ.ГГГГ)", 10, 10)
                                 .required(true)
                                 .placeholder("25.06.2026")
-                ));
+                ))
+                // 1 мгновенный повтор при сетевом сбое (без задержки — иначе interaction протухнет)
+                .retryWhen(reactor.util.retry.Retry.max(1)
+                        .filter(e -> e instanceof io.netty.channel.unix.Errors.NativeIoException
+                                || e.getMessage() != null && e.getMessage().contains("Connection")))
+                .doOnError(e -> log.warn("Vacation modal failed: {}", e.getMessage()))
+                .onErrorResume(e -> Mono.empty()); // не роняем обработчик
     }
 
     /**
