@@ -91,7 +91,8 @@ public class WarehouseCommandHandler {
                 ))
                 .flatMap(w -> event.editReply()
                         .withEmbedsOrNull(List.of(buildWarehouseEmbed(w, "Склад создан")))
-                        .then())
+                        .then(refreshPanel(event.getClient())) // ← обновляем панель
+                )
                 .onErrorResume(e -> {
                     log.error("Error creating warehouse: {}", e.getMessage());
                     return event.editReply()
@@ -262,11 +263,24 @@ public class WarehouseCommandHandler {
 
         return event.deferReply().withEphemeral(true)
                 .then(Mono.fromCallable(() -> warehouseService.deleteWarehouse(name)))
-                .flatMap(deleted -> event.editReply()
-                        .withContentOrNull(deleted
-                                ? "✅ Склад '" + name + "' удалён"
-                                : "❌ Склад '" + name + "' не найден")
-                        .then());
+                .flatMap(deleted -> {
+                    Mono<Void> reply = event.editReply()
+                            .withContentOrNull(deleted
+                                    ? "✅ Склад '" + name + "' удалён"
+                                    : "❌ Склад '" + name + "' не найден")
+                            .then();
+
+                    // Обновляем панель только если реально удалили
+                    return deleted
+                            ? reply.then(refreshPanel(event.getClient()))
+                            : reply;
+                })
+                .onErrorResume(e -> {
+                    log.error("Error deleting warehouse: ", e);
+                    return event.editReply()
+                            .withContentOrNull("❌ Ошибка: " + e.getMessage())
+                            .then();
+                });
     }
 
     // --- Утилиты ---
