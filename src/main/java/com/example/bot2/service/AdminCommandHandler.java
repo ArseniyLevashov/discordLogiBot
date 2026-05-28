@@ -221,10 +221,10 @@ public class AdminCommandHandler {
                 .withCustomId("create_wh_ticket_modal:" + location)
                 .withComponents(
                         ActionRow.of(TextInput.paragraph("resources",
-                                        "Предметы (каждый с новой строки: название:количество)",
+                                        "Предметы (название:количество)",
                                         1, 1000)
                                 .required(true)
-                                .placeholder("Патроны:5000\nАптечки:200\nБинты:300")),
+                                .placeholder("Винтовки:150\nМамонки:50\nБинты:100")),
                         ActionRow.of(TextInput.paragraph("description",
                                         "Описание (необязательно)", 1, 500)
                                 .required(false))
