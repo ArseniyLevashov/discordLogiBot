@@ -13,6 +13,7 @@ import discord4j.core.object.component.ActionRow;
 import discord4j.core.object.component.Button;
 import discord4j.core.object.component.LayoutComponent;
 import discord4j.core.object.component.TextInput;
+import discord4j.core.object.entity.channel.MessageChannel;
 import discord4j.core.object.reaction.ReactionEmoji;
 import discord4j.core.spec.EmbedCreateSpec;
 import discord4j.core.spec.MessageCreateSpec;
@@ -48,6 +49,9 @@ public class AdminCommandHandler {
 
     @Value("${discord.ping-role-id}")
     private String pingRoleId;
+
+    @Value("${discord.warehouse-ticket-channel-id}")
+    private String warehouseTicketChannelId;
 
     /**
      * /create-ticket resource:Железо emoji:⚙️ amount:10000 location:Склад-3
@@ -305,7 +309,9 @@ public class AdminCommandHandler {
                     EmbedCreateSpec embed = embedBuilder.buildTicketEmbed(fresh, top);
                     List<LayoutComponent> buttons = embedBuilder.buildTicketButtons(fresh);
 
-                    return event.getInteraction().getChannel()
+                    return event.getClient()
+                            .getChannelById(Snowflake.of(warehouseTicketChannelId))
+                            .ofType(MessageChannel.class)
                             .flatMap(channel -> channel.createMessage(MessageCreateSpec.builder()
                                     .content("<@&" + pingRoleId + ">")
                                     .addEmbed(embed)
