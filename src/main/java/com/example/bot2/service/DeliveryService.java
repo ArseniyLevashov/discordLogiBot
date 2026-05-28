@@ -26,16 +26,22 @@ public class DeliveryService {
     private final DeliveryContributionRepository contributionRepo;
     private final TicketResourceRepository resourceRepo;
 
+    public DeliveryTicket createTicket(List<String> resourceSpecs, String location,
+                                       String description, String creatorId, String creatorName) {
+        return createTicket(resourceSpecs, location, description,
+                DeliveryTicket.TicketType.PRODUCTION, creatorId, creatorName);
+    }
     /**
      * Создать тикет с несколькими ресурсами
      * resources — список пар: "⚙️Железо:10000", "🌲Дерево:5000"
      */
     public DeliveryTicket createTicket(List<String> resourceSpecs, String location,
-                                       String description,
+                                       String description, DeliveryTicket.TicketType type,
                                        String creatorId, String creatorName) {
         DeliveryTicket ticket = new DeliveryTicket();
         ticket.setLocation(location);
         ticket.setDescription(description);
+        ticket.setType(type);                 // ← тип
         ticket.setCreatedBy(creatorId);
         ticket.setCreatedByName(creatorName);
         DeliveryTicket saved = ticketRepo.save(ticket);
@@ -45,7 +51,6 @@ public class DeliveryService {
         for (String spec : resourceSpecs) {
             String[] parts = spec.split(":", 2);
             if (parts.length < 2) continue;
-
             String name = parts[0].trim();
             long amount;
             try {
@@ -54,7 +59,6 @@ public class DeliveryService {
                 log.warn("Skipping invalid spec '{}'", spec);
                 continue;
             }
-
             TicketResource resource = new TicketResource();
             resource.setTicket(saved);
             resource.setResourceName(name);
@@ -64,10 +68,9 @@ public class DeliveryService {
             log.info("Saved resource: {} x{}", name, amount);
         }
 
-        // Сбрасываем кэш Hibernate и загружаем свежие данные
         ticketRepo.flush();
         return ticketRepo.findById(saved.getId())
-                .orElseThrow(() -> new RuntimeException("Ticket not found after save"));
+                .orElseThrow(() -> new RuntimeException("Ticket not found"));
     }
 
     /**

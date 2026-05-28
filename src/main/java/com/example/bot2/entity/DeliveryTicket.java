@@ -25,6 +25,11 @@ public class DeliveryTicket {
     private String discordChannelId;
 
     @Enumerated(EnumType.STRING)
+    private TicketType type = TicketType.PRODUCTION;
+
+    public enum TicketType { PRODUCTION, WAREHOUSE }
+
+    @Enumerated(EnumType.STRING)
     private TicketStatus status = TicketStatus.OPEN;
 
     private LocalDateTime createdAt = LocalDateTime.now();

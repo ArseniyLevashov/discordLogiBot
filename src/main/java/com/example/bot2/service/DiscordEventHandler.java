@@ -41,6 +41,7 @@ public class DiscordEventHandler {
                     case "vacations"        -> vacationHandler.handleListVacations(event);
                     case "end-vacation"     -> vacationHandler.handleEndVacation(event);
                     case "warehouse-panel"  -> warehouseHandler.handleCreatePanel(event);
+                    case "create-warehouse-ticket" -> adminHandler.handleCreateWarehouseTicket(event);
                     default                 -> Mono.empty();
                 })
         ).subscribe();
@@ -96,6 +97,9 @@ public class DiscordEventHandler {
                 action = warehouseHandler.handleCreateWarehouseModal(event);
             } else if (id.equals("vacation_modal")) {
                 action = vacationHandler.handleVacationModal(event);
+            } else if (id.startsWith("create_wh_ticket_modal:")) {
+                String location = id.substring("create_wh_ticket_modal:".length());
+                action = adminHandler.handleCreateWarehouseTicketModal(event, location);
             }
 
             return safe(action);

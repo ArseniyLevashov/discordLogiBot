@@ -200,6 +200,136 @@ public class AdminCommandHandler {
                 .withComponents(List.of()); // убираем кнопки
     }
 
+    /**
+     * /create-warehouse-ticket location:... — открывает Modal
+     */
+    public Mono<Void> handleCreateWarehouseTicket(ChatInputInteractionEvent event) {
+        boolean hasRole = event.getInteraction().getMember()
+                .map(m -> m.getRoleIds().stream()
+                        .anyMatch(id -> id.asString().equals(facilityManagerRoleId)
+                                || id.asString().equals(warehouseManagerRoleId)))
+                .orElse(false);
+
+        if (!hasRole) {
+            return event.reply().withEphemeral(true).withContent("❌ Нет прав!");
+        }
+
+        String location = getStringOption(event, "location");
+
+        return event.presentModal()
+                .withTitle("Складская заявка")
+                .withCustomId("create_wh_ticket_modal:" + location)
+                .withComponents(
+                        ActionRow.of(TextInput.paragraph("resources",
+                                        "Предметы (каждый с новой строки: название:количество)",
+                                        1, 1000)
+                                .required(true)
+                                .placeholder("Патроны:5000\nАптечки:200\nБинты:300")),
+                        ActionRow.of(TextInput.paragraph("description",
+                                        "Описание (необязательно)", 1, 500)
+                                .required(false))
+                );
+    }
+
+    /**
+     * Обработка Modal складской заявки
+     */
+    public Mono<Void> handleCreateWarehouseTicketModal(ModalSubmitInteractionEvent event,
+                                                       String location) {
+        boolean hasRole = event.getInteraction().getMember()
+                .map(m -> m.getRoleIds().stream()
+                        .anyMatch(id -> id.asString().equals(facilityManagerRoleId)
+                                || id.asString().equals(warehouseManagerRoleId)))
+                .orElse(false);
+
+        if (!hasRole) {
+            return event.reply().withEphemeral(true).withContent("❌ Нет прав!");
+        }
+
+        String rawInput = event.getComponents(TextInput.class).stream()
+                .filter(c -> c.getCustomId().equals("resources"))
+                .findFirst()
+                .flatMap(TextInput::getValue)
+                .orElse("").trim();
+
+        String description = event.getComponents(TextInput.class).stream()
+                .filter(c -> c.getCustomId().equals("description"))
+                .findFirst()
+                .flatMap(TextInput::getValue)
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .orElse(null);
+
+        if (rawInput.isEmpty()) {
+            return event.reply().withEphemeral(true)
+                    .withContent("❌ Укажи хотя бы один предмет!");
+        }
+
+        List<String> specs = Arrays.stream(rawInput.split("\\n"))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toList());
+
+        // Валидация
+        List<String> invalid = specs.stream()
+                .filter(s -> s.split(":", 2).length < 2)
+                .collect(Collectors.toList());
+        if (!invalid.isEmpty()) {
+            return event.reply().withEphemeral(true)
+                    .withContent("❌ Неверный формат:\n`" + String.join("\n", invalid) + "`");
+        }
+        for (String spec : specs) {
+            try {
+                long amount = Long.parseLong(spec.split(":", 2)[1].trim());
+                if (amount <= 0) throw new NumberFormatException();
+            } catch (NumberFormatException e) {
+                return event.reply().withEphemeral(true)
+                        .withContent("❌ Неверное количество: `" + spec + "`");
+            }
+        }
+
+        String userId   = event.getInteraction().getUser().getId().asString();
+        String username = event.getInteraction().getUser().getUsername();
+        final List<String> finalSpecs = specs;
+        final String finalDesc = description;
+
+        return event.deferReply().withEphemeral(true)
+                .then(Mono.fromCallable(() ->
+                        deliveryService.createTicket(finalSpecs, location, finalDesc,
+                                DeliveryTicket.TicketType.WAREHOUSE,  // ← тип склада
+                                userId, username)
+                ))
+                .flatMap(ticket -> {
+                    DeliveryTicket fresh = deliveryService.getTicketById(ticket.getId()).orElse(ticket);
+                    List<Object[]> top  = deliveryService.getTopContributors(fresh.getId());
+                    EmbedCreateSpec embed = embedBuilder.buildTicketEmbed(fresh, top);
+                    List<LayoutComponent> buttons = embedBuilder.buildTicketButtons(fresh);
+
+                    return event.getInteraction().getChannel()
+                            .flatMap(channel -> channel.createMessage(MessageCreateSpec.builder()
+                                    .content("<@&" + pingRoleId + ">")
+                                    .addEmbed(embed)
+                                    .addComponent(buttons.isEmpty()
+                                            ? ActionRow.of()
+                                            : (LayoutComponent) buttons.get(0))
+                                    .build()))
+                            .doOnNext(message -> deliveryService.attachMessage(
+                                    fresh.getId(),
+                                    message.getId().asString(),
+                                    message.getChannelId().asString()))
+                            .then(event.editReply()
+                                    .withContentOrNull(String.format(
+                                            "✅ Складская заявка #%d создана (%d предметов)!",
+                                            fresh.getId(), fresh.getResources().size()))
+                                    .then());
+                })
+                .onErrorResume(e -> {
+                    log.error("Error creating warehouse ticket: ", e);
+                    return event.editReply()
+                            .withContentOrNull("❌ Ошибка: " + e.getMessage())
+                            .then();
+                });
+    }
 
     public Mono<Void> handleCreateTicketModal(ModalSubmitInteractionEvent event, String location) {
         boolean hasRole = event.getInteraction().getMember()

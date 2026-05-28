@@ -86,10 +86,14 @@ public class EmbedBuilder {
     }
 
     private String buildStatusLine(DeliveryTicket ticket) {
+        String prefix = ticket.getType() == DeliveryTicket.TicketType.WAREHOUSE
+                ? "📦 Складская заявка"
+                : "🏭 Производственный тикет";
+
         return switch (ticket.getStatus()) {
-            case OPEN      -> "📦 Активный тикет доставки";
-            case COMPLETED -> "✅ Доставка завершена!";
-            case CANCELLED -> "❌ Тикет отменён";
+            case OPEN      -> prefix + " — активна";
+            case COMPLETED -> "✅ " + prefix + " — выполнена!";
+            case CANCELLED -> "❌ " + prefix + " — отменена";
         };
     }
 

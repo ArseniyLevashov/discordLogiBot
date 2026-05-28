@@ -33,6 +33,12 @@ public class SlashCommandRegistrar implements ApplicationRunner {
                         .build(),
 
                 ApplicationCommandRequest.builder()
+                        .name("create-warehouse-ticket")
+                        .description("Создать складскую заявку на множество предметов")
+                        .addOption(option("location", "Куда/для чего", true))
+                        .build(),
+
+                ApplicationCommandRequest.builder()
                         .name("cancel-ticket")
                         .description("Отменить тикет доставки")
                         .addOption(optionLong("id", "ID тикета", true))
