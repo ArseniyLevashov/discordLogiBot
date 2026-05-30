@@ -38,7 +38,7 @@ public class KillCommandHandler {
 
     private final KillService killService;
 
-    @Value("${discord.facility-manager-role-id:0}")
+    @Value("${discord.commander-role-id:0}")
     private String adminRoleId;
 
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("HH:mm");
