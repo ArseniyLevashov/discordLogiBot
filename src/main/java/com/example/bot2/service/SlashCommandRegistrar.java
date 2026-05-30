@@ -94,6 +94,22 @@ public class SlashCommandRegistrar implements ApplicationRunner {
                         .name("end-vacation")
                         .description("Снять отпуск вручную по ID")
                         .addOption(optionLong("id", "ID отпуска (из списка /vacations)", true))
+                        .build(),
+
+                ApplicationCommandRequest.builder()
+                        .name("create-kill-panel")
+                        .description("Создать новую панель учёта уничтоженной техники")
+                        .build(),
+
+                ApplicationCommandRequest.builder()
+                        .name("close-kill-panel")
+                        .description("Закрыть подсчёт и очистить данные текущей панели")
+                        .build(),
+
+                ApplicationCommandRequest.builder()
+                        .name("edit-kill")
+                        .description("Редактировать запись об уничтожении")
+                        .addOption(optionLong("id", "ID записи из панели", true))
                         .build()
         );
 

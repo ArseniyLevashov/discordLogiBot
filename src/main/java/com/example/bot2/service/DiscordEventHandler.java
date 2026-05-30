@@ -23,6 +23,8 @@ public class DiscordEventHandler {
     private final WarehouseCommandHandler warehouseHandler;
     private final VacationCommandHandler vacationHandler;
 
+    private final KillCommandHandler killHandler;
+
     @PostConstruct
     public void registerListeners() {
 
@@ -42,6 +44,9 @@ public class DiscordEventHandler {
                     case "end-vacation"     -> vacationHandler.handleEndVacation(event);
                     case "warehouse-panel"  -> warehouseHandler.handleCreatePanel(event);
                     case "create-warehouse-ticket" -> adminHandler.handleCreateWarehouseTicket(event);
+                    case "create-kill-panel" -> killHandler.handleCreatePanel(event);
+                    case "close-kill-panel"  -> killHandler.handleClosePanel(event);
+                    case "edit-kill"         -> killHandler.handleEditKill(event);
                     default                 -> Mono.empty();
                 })
         ).subscribe();
@@ -60,6 +65,8 @@ public class DiscordEventHandler {
                 action = adminHandler.handleCleanupCancel(event);
             } else if (id.equals("vacation_request")) {
                 action = vacationHandler.handleVacationButton(event);
+            } else if (id.equals("add_kill_button")) {
+                action = killHandler.handleAddKillButton(event);
             }
 
             return safe(action);
@@ -75,6 +82,10 @@ public class DiscordEventHandler {
                 action = userHandler.handleResourceSelect(event, ticketId);
             } else if (id.equals("warehouse_update_select")) {
                 action = warehouseHandler.handleUpdateWarehouseSelect(event);
+            } else if (id.equals("kill_category_select")) {
+                action = killHandler.handleCategorySelect(event);
+            } else if (id.equals("kill_type_select")) {
+                action = killHandler.handleTypeSelect(event);
             }
 
             return safe(action);
@@ -100,6 +111,12 @@ public class DiscordEventHandler {
             } else if (id.startsWith("create_wh_ticket_modal:")) {
                 String location = id.substring("create_wh_ticket_modal:".length());
                 action = adminHandler.handleCreateWarehouseTicketModal(event, location);
+            } else if (id.startsWith("kill_amount_modal:")) {
+                Long typeId = Long.parseLong(id.split(":")[1]);
+                action = killHandler.handleAmountModal(event, typeId);
+            } else if (id.startsWith("edit_kill_modal:")) {
+                Long killId = Long.parseLong(id.split(":")[1]);
+                action = killHandler.handleEditKillModal(event, killId);
             }
 
             return safe(action);
