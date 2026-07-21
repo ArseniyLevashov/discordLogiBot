@@ -70,7 +70,6 @@ public class WarehouseScheduler {
         client.getChannelById(Snowflake.of(channelId))
                 .ofType(MessageChannel.class)
                 .flatMap(channel -> channel.createMessage(MessageCreateSpec.builder()
-                        .content("<@&" + roleId + ">")
                         .addEmbed(embed)
                         .build()))
                 .doOnSuccess(m -> log.info("Stale warehouse notification sent"))
